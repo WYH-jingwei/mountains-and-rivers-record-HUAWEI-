@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "舆图山河录 · AI 历史地理课堂展陈端"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "主入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "舆图山河录"
+    }
+  ]
+}

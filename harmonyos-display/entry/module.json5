@@ -1,0 +1,37 @@
+{
+  "name": "entry",
+  "type": "entry",
+  "description": "舆图山河录 · AI 历史地理课堂展陈端",
+  "mainElement": "EntryAbility",
+  "deviceTypes": ["phone", "2in1"],
+  "deliveryWithInstall": true,
+  "installationFree": false,
+  "pages": [
+    "pages/ControlPage",
+    "pages/DisplayPage"
+  ],
+  "abilities": [
+    {
+      "name": "EntryAbility",
+      "srcEntry": "./ets/entryability/EntryAbility.ets",
+      "description": "主入口",
+      "icon": "$media:icon",
+      "label": "舆图山河录",
+      "startWindowIcon": "$media:icon",
+      "startWindowBackground": "$color:start_window_background",
+      "exported": true,
+      "skills": [
+        {
+          "entities": ["entity.system.home"],
+          "actions": ["action.system.home"]
+        }
+      ]
+    }
+  ],
+  "metadata": [
+    {
+      "name": "orientation",
+      "value": "landscape"
+    }
+  ]
+}
