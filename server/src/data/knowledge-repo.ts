@@ -2,8 +2,9 @@ import type { RowDataPacket } from 'mysql2';
 import { dbQuery } from '../db/mysql.js';
 import {
   getAllEntries,
-  rankEntries,
+  rankEntriesScored,
   type KnowledgeEntry,
+  type RetrievalHit,
 } from './knowledge.js';
 import type { Evidence, MapAction } from '../engine/grader.js';
 
@@ -64,7 +65,7 @@ async function loadEntriesFromDb(): Promise<KnowledgeEntry[] | null> {
         layer: action.layer,
         ...(action.year !== null ? { year: action.year } : {}),
         ...(action.focus_lng !== null && action.focus_lat !== null
-          ? { focus: [action.focus_lng, action.focus_lat] as [number, number] }
+          ? { focus: [Number(action.focus_lng), Number(action.focus_lat)] as [number, number] }
           : {}),
       };
     }
@@ -87,10 +88,10 @@ async function loadEntriesFromDb(): Promise<KnowledgeEntry[] | null> {
  * 检索知识：优先使用 MySQL 中的数据；DB 不可用时降级到内置内存条目。
  * 两条路径共用同一套打分排序规则。
  */
-export async function searchKnowledgeRepo(question: string): Promise<KnowledgeEntry[]> {
+export async function searchKnowledgeRepo(question: string): Promise<RetrievalHit[]> {
   const dbEntries = await loadEntriesFromDb();
-  if (dbEntries) return rankEntries(dbEntries, question);
-  return rankEntries(getAllEntries(), question);
+  if (dbEntries) return rankEntriesScored(dbEntries, question);
+  return rankEntriesScored(getAllEntries(), question);
 }
 
 /** 取全部知识条目（数据库优先，无库时用内置内存），用于构建向量库。 */

@@ -1,7 +1,7 @@
 import { createEmbedding } from '../llm/client.js';
 import { getAllEntriesRepo } from '../data/knowledge-repo.js';
 import { cacheGet, cacheSet } from '../db/redis.js';
-import type { KnowledgeEntry } from '../data/knowledge.js';
+import type { KnowledgeEntry, RetrievalHit } from '../data/knowledge.js';
 
 let vectors: Map<string, number[]> | null = null;
 let inflight: Promise<Map<string, number[]>> | null = null;
@@ -57,12 +57,16 @@ async function getVectors(): Promise<Map<string, number[]>> {
   }
 }
 
-/** 语义检索：向量化问题，按余弦相似度返回 topK；低于阈值的条目不返回（避免强行匹配）。 */
+/**
+ * 语义检索：向量化问题，按余弦相似度返回 topK；低于阈值的条目不返回（避免强行匹配域外内容）。
+ * 阈值 0.60 基于当前 20 条语料标定：真实命中 top1 ≥0.69，域外朝代（宋/汉/元/清）≤0.56，
+ * 完全无关问题 ≤0.39；扩充语料后需复测阈值。关键词降级路径不受此阈值影响。
+ */
 export async function semanticSearch(
   question: string,
   topK = 5,
-  minScore = 0.2,
-): Promise<KnowledgeEntry[]> {
+  minScore = 0.6,
+): Promise<RetrievalHit[]> {
   const entries = await getAllEntriesRepo();
   const [queryVector] = await createEmbedding(question);
   const vecs = await getVectors();
@@ -74,6 +78,5 @@ export async function semanticSearch(
     }))
     .filter(x => x.score >= minScore)
     .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map(x => x.entry);
+    .slice(0, topK);
 }

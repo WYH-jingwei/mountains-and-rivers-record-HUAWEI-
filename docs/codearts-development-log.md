@@ -182,6 +182,45 @@ mountains-and-rivers-record(HUAWEI)/
 
 **部署文档**：`docs/cloud-deployment.md`
 
+### 2.9 真实模型接入与 RAG 检索校准（本地联调，未部署）
+
+**模型选型决策（成本优先，贴合学生预算）**：
+
+| 用途 | 选定模型 | 选择理由 |
+|---|---|---|
+| 对话生成 | `openpangu-2.0-flash` | 本系统 LLM 职责极轻：短上下文、短输出、不参与分级，仅把规则结论润色为自然语言，无需旗舰推理；Flash 输入 0.80 / 输出 1.60（元/百万 token），按单次约输入 1200 / 输出 300 token 估算，2000 次约 ¥2.88；预留切换 `openpangu-2.0-pro` 注释 |
+| 文本向量 | `bge-m3` | MaaS 预置服务、标准 OpenAI 兼容 `/embeddings` 端点、1024 维、中英文，免自部署 |
+
+两者均为华为云 ModelArts Studio（MaaS）预置服务（区域 cn-southwest-2），共用一个 API Key；Key 仅写入本地 `server/.env`（已被 .gitignore 拦截，不入库）。
+
+**架构原则（用户锁定口径，不可偏移）**：
+- 语义检索只负责"找对材料"；**四档分级、出处卡、地图动作仍由规则引擎决定**，模型不参与分级。
+- 降级链：embedding 未配置 / 调用失败 → 回退关键词检索；LLM 未配置 / 生成失败 → 保留规则引擎原 answer。
+
+**新增/改动模块**：
+- `server/src/llm/client.ts`：对话与向量双 base 地址、配置探测（`isLlmConfigured` / `isEmbeddingConfigured`）、仅用内置 fetch。
+- `server/src/rag/vector-store.ts`：向量懒构建（缺失时批量 embedding 20 条）+ Redis 缓存 `rag:vectors:<model>`（TTL 86400）；余弦相似度排序。
+- `server/src/rag/generator.ts`：系统提示四条约束（区分管到/写到/走到、不编造、分歧明示、输出 ≤200 字）；生成失败返回 null 走降级。
+- `server/src/routes/qa.ts`：检索编排 + 多口径触发信号 + LLM 润色接线。
+
+**校准过程（规则体 `grader.ts` 一行未改，只让上游触发信号更准）**：
+
+1. **多口径误触发（level2 假阳性）**：语义召回比关键词更宽，把邻近主题（最北、行迹等）一并带入，使单口径直答被误判为条件答。统一检索返回 `RetrievalHit { entry, score }`，多口径（level2）收紧为同时满足：同朝代 + 口径不同 + 次条/头条分数比 ≥ 0.93 + 共享主题关键词（同族问题）。
+2. **域外问题弱召回（level3 失效）**：初版余弦阈值 0.2 过低，宋/汉/元/清等域外问题被低相似条目强行召回。基于样本标定阈值 0.60：真实命中 top1 ≥ 0.69，域外朝代 ≤ 0.56，完全无关 ≤ 0.39，据此干净分离；关键词降级路径不受此阈值影响。
+3. **坐标类型修复**：MySQL `DECIMAL` 经 mysql2 返回字符串，`mapAction.focus` 在 DB 组装层统一 `Number()` 转数值，保障后续地图定位使用数值坐标。
+
+**关键用例前后对比**：
+
+| 问题 | 修复前 | 修复后 | 说明 |
+|---|---|---|---|
+| 唐朝最西到哪？ | level2（误判多口径） | **level1** | 单一直辖口径直答 |
+| 唐朝面积多少？ | level2 | **level2**（保留） | 直辖 944 万 vs 含羁縻 1237 万，真多口径 |
+| 唐朝最北到哪？ | level2（误判） | **level1** | 羁縻单条 |
+| 宋/汉疆域多大、无关问题 | level1（误答） | **level3** | 超范围声明边界 |
+| 语义改写问（词面无关键词命中） | — | **level1 正确召回** | 验证向量泛化补关键词盲区 |
+
+**验证结果**：`npm run verify` 自测套件 **20 passed / 0 failed**；真实联调下 Flash 自然语言改写生效，level / evidence / mapAction 仍来自规则引擎，focus 为数值类型；向量缓存命中后二次问答不再重复调用 embedding。
+
 ## 3. CodeArts 使用记录
 
 ### 3.1 开发方式
@@ -214,7 +253,7 @@ mountains-and-rivers-record(HUAWEI)/
 - [x] Redis 客户端接入与降级封装（`db/redis.ts`；本地 6379 实例可用，无实例时自动降级）
 - [x] RDS 数据接入（MySQL 连接层 + 优雅降级；专用账号 history；已完成真实初始化与读写联调，2026-10-31）
 - [ ] postMessage 地图联动注入（地图 HTML 需添加消息监听器）
-- [ ] 真实模型接入与 RAG 检索（embedding + LLM，四档规则分级保持不变）
+- [x] 真实模型接入与 RAG 检索（bge-m3 向量 + openpangu-2.0-flash 润色；四档规则分级保持不变；2026-10-31 本地联调通过，verify 20/20；详见 2.9）
 - [ ] 鸿蒙展陈端联调（手机控制 + 大屏接收，页面骨架已存在）
 - [ ] 昇腾边缘离线推理（方案已写，暂不实现）
 - [ ] ECS 实际部署与验证（**按用户要求，前四步审查通过后再进行**）

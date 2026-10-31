@@ -12,6 +12,12 @@ export interface KnowledgeEntry {
   mapAction?: MapAction;
 }
 
+/** 统一检索结果：命中条目 + 检索分数（关键词打分为整数分，语义检索为余弦相似度）。 */
+export interface RetrievalHit {
+  entry: KnowledgeEntry;
+  score: number;
+}
+
 const tangEntries: KnowledgeEntry[] = [
   {
     id: 'tang-01',
@@ -281,8 +287,8 @@ const mingEntries: KnowledgeEntry[] = [
 
 const allEntries: KnowledgeEntry[] = [...tangEntries, ...mingEntries];
 
-/** 关键词打分、过滤与排序。数据库加载与内置内存两条路径共用，保证行为一致。 */
-export function rankEntries(entries: KnowledgeEntry[], question: string): KnowledgeEntry[] {
+/** 关键词打分、过滤与排序（带分数）。数据库加载与内置内存两条路径共用，保证行为一致。 */
+export function rankEntriesScored(entries: KnowledgeEntry[], question: string): RetrievalHit[] {
   const q = question.toLowerCase().trim();
 
   const scored = entries.map(entry => {
@@ -297,8 +303,12 @@ export function rankEntries(entries: KnowledgeEntry[], question: string): Knowle
 
   return scored
     .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map(s => s.entry);
+    .sort((a, b) => b.score - a.score);
+}
+
+/** 兼容旧签名：仅返回条目。需要分数时请使用 rankEntriesScored。 */
+export function rankEntries(entries: KnowledgeEntry[], question: string): KnowledgeEntry[] {
+  return rankEntriesScored(entries, question).map(h => h.entry);
 }
 
 export function searchKnowledge(question: string): KnowledgeEntry[] {
