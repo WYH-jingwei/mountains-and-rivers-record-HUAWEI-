@@ -221,6 +221,38 @@ mountains-and-rivers-record(HUAWEI)/
 
 **验证结果**：`npm run verify` 自测套件 **20 passed / 0 failed**；真实联调下 Flash 自然语言改写生效，level / evidence / mapAction 仍来自规则引擎，focus 为数值类型；向量缓存命中后二次问答不再重复调用 embedding。
 
+### 2.10 地图 postMessage 联动闭环（本地联调，未部署）
+
+**目标**：问答侧栏点击"在地图上查看"后，由后端 `mapAction` 驱动地图端完成"切朝代 → 选时点 → 配图层 → 镜头飞行 / 行迹生长"的闭环；四档分级与地图动作的归属仍由规则引擎决定，本环节只负责动作落地。
+
+**消息协议（前后端约定，保持不变）**：
+
+```
+MapAction { dynasty: 'tang'|'ming'; year?: number;
+            layer: 'admin'|'military'|'journey'|'cultural';
+            focus?: [lng, lat] }
+```
+
+**改动模块**：
+- `frontend/public/舆图山河录.html`（地图内嵌脚本）：
+  - 在主闭包 `window.__MAP` 内新增统一入口 `focusOnAction(action)`，可直达原闭包私有函数（`selectDynasty` / `selectPhase` / `showRoute` / `tweenTo` / 图层开关）；原先末尾一段依赖裸函数 `selectDynasty`、`tweenTo` 的监听器因二者在闭包外不可达而从未生效，本次整体替换。
+  - 行为分支：`layer=journey` 时复用内置人物路线（唐→玄奘、明→郑和）调 `showRoute` 做逐站生长；其余分支先按 `dynasty` 切朝、`year` 选最近内部时点（phase）、补开对应图层（`admin` 行政面 / `military` 都护府军镇锚点 / `cultural` 文献地名），再按 `focus=[lng,lat]` 飞行定位（`view.cx/cy` 本身即经纬度，直接作为飞行中心）。各图层默认全开、**不做互斥隐藏**，保留"管到 / 写到 / 走到"三层同框。
+  - 消息监听加同源 `origin` 校验，拒绝跨源消息。
+- `frontend/src/views/MapView.vue`（发送侧）：`handleMapAction` 在 `postMessage` 前先 `JSON.parse(JSON.stringify(action))` 剥离响应式代理。
+
+**关键缺陷修复——DataCloneError**：首版直接 `postMessage(response.mapAction, '*')`，而 `response.mapAction` 是 Vue 响应式 `Proxy` 对象，结构化克隆算法无法克隆 Proxy，控制台持续抛 `DataCloneError: [object Object] could not be cloned`，消息实际未发出、地图无响应。序列化为纯普通对象后消除，控制台零报错。
+
+**端到端实测（真实提问 → 按钮 → 地图，CDP 主世界读 `__MAP.viewState()` / `current()`）**：
+
+| 用例 | layer | 期望动作 | 实测结果 |
+|---|---|---|---|
+| 唐朝最西到哪？ | admin | 切唐、定位碎叶 | cur=13(唐)，cx=75.30 cy=42.80，s=16.00 ✅ |
+| 安西四镇（唐·661） | military | 切唐、锚点层、定位 | cur=13(唐)，cx=83.00 cy=41.70，s=16.00 ✅ |
+| 玄奘西行经过哪些地方？ | journey | 玄奘路线生长 | cur=13(唐)，routePts=7 站 ✅ |
+| 郑和下西洋（明·1430） | journey | 切明、郑和路线生长 | cur=18(明)，routePts=6 站 ✅ |
+
+**验证结果**：前端 `npm run build`（vue-tsc + vite）通过；四类图层分支均落地，真实点击无控制台错误；地图 `items=22` 加载正常。行迹镜头由既有 `routeView` 按整条路线叠加朝代疆域框统一取景，跨幅较大时接近全景属既有设计，不影响站点绘制与生长。
+
 ## 3. CodeArts 使用记录
 
 ### 3.1 开发方式
@@ -252,7 +284,7 @@ mountains-and-rivers-record(HUAWEI)/
 - [x] 版本库初始化与基线提交（2026-10-31，commit `427016b`，165 文件）
 - [x] Redis 客户端接入与降级封装（`db/redis.ts`；本地 6379 实例可用，无实例时自动降级）
 - [x] RDS 数据接入（MySQL 连接层 + 优雅降级；专用账号 history；已完成真实初始化与读写联调，2026-10-31）
-- [ ] postMessage 地图联动注入（地图 HTML 需添加消息监听器）
+- [x] postMessage 地图联动闭环（`__MAP.focusOnAction` 统一入口 + 同源校验；修复 Vue Proxy 的 DataCloneError；admin/military/journey 四分支实测通过；2026-10-31 本地联调，详见 2.10）
 - [x] 真实模型接入与 RAG 检索（bge-m3 向量 + openpangu-2.0-flash 润色；四档规则分级保持不变；2026-10-31 本地联调通过，verify 20/20；详见 2.9）
 - [ ] 鸿蒙展陈端联调（手机控制 + 大屏接收，页面骨架已存在）
 - [ ] 昇腾边缘离线推理（方案已写，暂不实现）
