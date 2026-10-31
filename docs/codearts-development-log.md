@@ -212,8 +212,8 @@ mountains-and-rivers-record(HUAWEI)/
 
 - [x] 版本库初始化与基线提交（2026-10-31，commit `427016b`，165 文件）
 - [x] Redis 客户端接入与降级封装（`db/redis.ts`；本地 6379 实例可用，无实例时自动降级）
+- [x] RDS 数据接入（MySQL 连接层 + 优雅降级；专用账号 history；已完成真实初始化与读写联调，2026-10-31）
 - [ ] postMessage 地图联动注入（地图 HTML 需添加消息监听器）
-- [ ] RDS 数据接入（MySQL 连接层 + 从 knowledge.ts 迁移；`schema.sql`/`seed-data.sql` 已就绪）
 - [ ] 真实模型接入与 RAG 检索（embedding + LLM，四档规则分级保持不变）
 - [ ] 鸿蒙展陈端联调（手机控制 + 大屏接收，页面骨架已存在）
 - [ ] 昇腾边缘离线推理（方案已写，暂不实现）
