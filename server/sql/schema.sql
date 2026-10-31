@@ -13,7 +13,8 @@ USE history_geo_classroom;
 -- 知识条目主表
 CREATE TABLE knowledge_entries (
   id VARCHAR(32) PRIMARY KEY,
-  dynasty ENUM('tang', 'ming') NOT NULL,
+  -- 朝代拼音代码（tang/ming/qin/xihan/sui/yuan/qing 等），用 VARCHAR 支持全朝代扩充
+  dynasty VARCHAR(32) NOT NULL,
   question TEXT NOT NULL,
   keywords JSON NOT NULL,
   answer TEXT NOT NULL,
@@ -103,7 +104,7 @@ CREATE TABLE answer_records (
 
 CREATE TABLE lecture_packages (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  dynasty ENUM('tang', 'ming') NOT NULL,
+  dynasty VARCHAR(16) NOT NULL,
   package_data JSON NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_dynasty (dynasty)

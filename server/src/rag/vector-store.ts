@@ -58,16 +58,23 @@ async function getVectors(): Promise<Map<string, number[]>> {
 }
 
 /**
- * 语义检索：向量化问题，按余弦相似度返回 topK；低于阈值的条目不返回（避免强行匹配域外内容）。
- * 阈值 0.60 基于当前 20 条语料标定：真实命中 top1 ≥0.69，域外朝代（宋/汉/元/清）≤0.56，
- * 完全无关问题 ≤0.39；扩充语料后需复测阈值。关键词降级路径不受此阈值影响。
+ * 语义检索（hybrid）：先按朝代元数据过滤候选，再向量化问题、按余弦相似度返回 topK。
+ * 40 条语料标定（2026-10-31）：同朝代真实命中 top1 ≥0.70；跨朝代邻近误召回 0.60~0.65；
+ * 域外/无关问题 ≤0.59。阈值由调用方分场景给定：限定朝代时跨朝代噪声已被元数据排除，
+ * 用宽松阈值 0.45 宽进（多口径再由 0.93 分数比把关）；识别不出朝代走全局时用 0.68 严格
+ * 兜底（卡在真实命中 0.70 之下、误召回 0.65 之上）。关键词降级路径不受此阈值影响。
  */
 export async function semanticSearch(
   question: string,
   topK = 5,
-  minScore = 0.6,
+  minScore = 0.68,
+  dynastyCodes?: string[],
 ): Promise<RetrievalHit[]> {
-  const entries = await getAllEntriesRepo();
+  const all = await getAllEntriesRepo();
+  // hybrid 元数据过滤：限定朝代后再做向量排序，避免跨朝代邻近条目被误召回
+  const entries = dynastyCodes && dynastyCodes.length
+    ? all.filter(e => dynastyCodes.includes(e.dynasty))
+    : all;
   const [queryVector] = await createEmbedding(question);
   const vecs = await getVectors();
 

@@ -18,7 +18,7 @@ const dynastyYears: Record<string, number> = {
 };
 
 export function getLecturePackage(dynasty: string): LecturePackage {
-  const entries = getEntriesByDynasty(dynasty as 'tang' | 'ming');
+  const entries = getEntriesByDynasty(dynasty);
   const year = dynastyYears[dynasty] ?? 0;
   const label = dynastyLabels[dynasty] ?? dynasty;
 

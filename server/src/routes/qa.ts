@@ -1,27 +1,69 @@
 import { Router } from 'express';
-import { grade, type GradedResponse } from '../engine/grader.js';
-import { searchKnowledgeRepo } from '../data/knowledge-repo.js';
-import type { RetrievalHit } from '../data/knowledge.js';
+import { grade, type GradedResponse, type RelatedQuestion } from '../engine/grader.js';
+import { searchKnowledgeRepo, getAllEntriesRepo } from '../data/knowledge-repo.js';
+import type { RetrievalHit, KnowledgeEntry } from '../data/knowledge.js';
 import { semanticSearch } from '../rag/vector-store.js';
 import { generateAnswer } from '../rag/generator.js';
 import { isEmbeddingConfigured, isLlmConfigured } from '../llm/client.js';
 import { cacheGet, cacheSet } from '../db/redis.js';
+import { detectDynasties } from '../engine/dynasty-detect.js';
 
 export const qaRouter = Router();
 
 /** 次条与首条分数比达到该阈值，才视为“并列竞争的多口径”；低于则视为邻近噪声，不触发条件答。 */
 const MULTI_CALIBER_SCORE_RATIO = 0.93;
 
-/** 检索：配置 embedding 时走语义召回（失败回退关键词），否则走关键词检索。统一返回带分数命中项。 */
-async function retrieve(question: string): Promise<RetrievalHit[]> {
+/**
+ * 检索：配置 embedding 时走语义召回（失败回退关键词），否则走关键词检索。统一返回带分数命中项。
+ * dynastyCodes 非空时限定候选朝代（hybrid 元数据过滤）：跨朝代误召回已被元数据排除，
+ * 故同朝代内用宽松阈值 0.45 宽进，再由多口径分数比 0.93 严格把关；识别不出朝代走全局
+ * 兜底时才用严格阈值 0.68 防止跨朝代邻近误召回。
+ */
+async function retrieve(question: string, dynastyCodes?: string[]): Promise<RetrievalHit[]> {
+  const inDynasty = !!(dynastyCodes && dynastyCodes.length);
   if (isEmbeddingConfigured()) {
     try {
-      return await semanticSearch(question, 5);
+      return await semanticSearch(question, 5, inDynasty ? 0.45 : 0.68, dynastyCodes);
     } catch (e) {
       console.error('semanticSearch failed, fallback to keyword:', (e as Error).message);
     }
   }
-  return searchKnowledgeRepo(question);
+  const kw = await searchKnowledgeRepo(question);
+  return inDynasty
+    ? kw.filter(h => dynastyCodes!.includes(h.entry.dynasty))
+    : kw;
+}
+
+/**
+ * 动态生成同朝代“相关问题”（最多3条）：先取本次检索中的同朝代其他命中，
+ * 不足再用同朝代、共享关键词数多者补充。不改动表结构，体验层附加、不参与分级。
+ */
+function buildRelated(
+  top: RetrievalHit,
+  results: RetrievalHit[],
+  all: KnowledgeEntry[],
+): RelatedQuestion[] {
+  const picked: RelatedQuestion[] = [];
+  const seen = new Set<string>([top.entry.id]);
+
+  for (const h of results.slice(1)) {
+    if (h.entry.dynasty === top.entry.dynasty && !seen.has(h.entry.id)) {
+      picked.push({ id: h.entry.id, question: h.entry.question });
+      seen.add(h.entry.id);
+    }
+    if (picked.length >= 3) return picked;
+  }
+
+  const sharedCount = (e: KnowledgeEntry) =>
+    e.keywords.filter(k => top.entry.keywords.includes(k)).length;
+  const sameDynasty = all
+    .filter(e => e.dynasty === top.entry.dynasty && !seen.has(e.id))
+    .sort((a, b) => sharedCount(b) - sharedCount(a));
+  for (const e of sameDynasty) {
+    picked.push({ id: e.id, question: e.question });
+    if (picked.length >= 3) break;
+  }
+  return picked;
 }
 
 qaRouter.post('/', async (req, res) => {
@@ -39,14 +81,29 @@ qaRouter.post('/', async (req, res) => {
     return;
   }
 
-  const results = await retrieve(question);
+  const dyn = detectDynasties(question);
+
+  // 识别出朝代但全部不在库（如宋）→ 直接范围声明，不做语义召回
+  if (dyn.codes.length > 0 && dyn.answerableCodes.length === 0) {
+    const graded: GradedResponse = {
+      level: 3,
+      answer: '本系统暂未收录该朝代的相关史料',
+      evidence: [],
+      uncertainty: ['超出本系统当前收录范围（秦、两汉、隋、唐、元、明、清）'],
+    };
+    await cacheSet(cacheKey, graded, 300);
+    res.json(graded);
+    return;
+  }
+
+  const results = await retrieve(question, dyn.answerableCodes);
 
   if (results.length === 0) {
     const graded: GradedResponse = {
       level: 3,
       answer: '本系统暂未收录该问题的相关史料',
       evidence: [],
-      uncertainty: ['超出本系统当前收录范围（唐、明两朝）'],
+      uncertainty: ['超出本系统当前收录范围（秦、两汉、隋、唐、元、明、清）'],
     };
     await cacheSet(cacheKey, graded, 300);
     res.json(graded);
@@ -82,6 +139,10 @@ qaRouter.post('/', async (req, res) => {
   if (hasMultipleCalibers && second) {
     graded.evidence = [...top.entry.evidence, ...second.entry.evidence];
   }
+
+  // 体验层附加同朝代相关问题（不参与分级）
+  const allEntries = await getAllEntriesRepo();
+  graded.relatedQuestions = buildRelated(top, results, allEntries);
 
   // 模型仅负责把结论改写为自然语言作答；分级、出处、地图动作、口径保持规则引擎结果
   if (isLlmConfigured()) {

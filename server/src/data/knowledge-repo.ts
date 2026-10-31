@@ -10,7 +10,7 @@ import type { Evidence, MapAction } from '../engine/grader.js';
 
 interface EntryRow extends RowDataPacket {
   id: string;
-  dynasty: 'tang' | 'ming';
+  dynasty: string;
   question: string;
   keywords: string | string[];
   answer: string;
