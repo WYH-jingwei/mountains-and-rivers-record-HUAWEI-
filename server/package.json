@@ -3,13 +3,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx --env-file-if-exists=.env watch src/index.ts",
+    "serve": "tsx --env-file-if-exists=.env src/serve.ts",
+    "verify": "tsx --env-file-if-exists=.env src/run-verify.ts",
+    "db:init": "tsx --env-file-if-exists=.env src/db/init-db.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.0",
+    "mysql2": "^3.24.6",
     "redis": "^6.3.1"
   },
   "devDependencies": {

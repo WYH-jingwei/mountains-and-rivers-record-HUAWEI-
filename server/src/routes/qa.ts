@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { grade, type GradedResponse } from '../engine/grader.js';
-import { searchKnowledge } from '../data/knowledge.js';
+import { searchKnowledgeRepo } from '../data/knowledge-repo.js';
 import { cacheGet, cacheSet } from '../db/redis.js';
 
 export const qaRouter = Router();
@@ -20,7 +20,7 @@ qaRouter.post('/', async (req, res) => {
     return;
   }
 
-  const results = searchKnowledge(question);
+  const results = await searchKnowledgeRepo(question);
 
   if (results.length === 0) {
     const graded: GradedResponse = {

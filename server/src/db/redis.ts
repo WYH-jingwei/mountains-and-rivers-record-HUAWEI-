@@ -1,25 +1,30 @@
-import { createClient, type RedisClientType } from 'redis';
+import { createClient } from 'redis';
 
-let client: RedisClientType | null = null;
+// 固定 RESP2 客户端类型：兼容本地 Redis 3.0（不支持 HELLO/RESP3），RESP2 亦通用于新版 Redis 与华为云 DCS
+type RedisClient = ReturnType<typeof createClient<{}, {}, {}, 2>>;
+
+let client: RedisClient | null = null;
 let connectFailed = false;
 
-export async function getRedisClient(): Promise<RedisClientType | null> {
+export async function getRedisClient(): Promise<RedisClient | null> {
   if (connectFailed) return null;
   if (client) return client;
 
   try {
-    client = createClient({
-      url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`,
+    const instance = createClient({
+      RESP: 2,
+      url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || '6379'}`,
       socket: { connectTimeout: 2000, reconnectStrategy: false },
     });
 
-    client.on('error', () => {
+    instance.on('error', () => {
       connectFailed = true;
     });
 
-    await client.connect();
+    await instance.connect();
+    client = instance;
     console.log('Redis connected');
-    return client;
+    return instance;
   } catch {
     connectFailed = true;
     console.log('Redis unavailable — running without cache');

@@ -6,8 +6,15 @@ export interface AnswerRecord {
   timestamp: number;
 }
 
+export type DeviationType =
+  | '管到/写到混淆'
+  | '走到/管到混淆'
+  | '写到/管到混淆'
+  | '范围超出'
+  | '正确';
+
 export interface DeviationItem {
-  type: '管到/写到混淆' | '走到/管到混淆' | '写到/管到混淆' | '范围超出' | '正确';
+  type: DeviationType;
   count: number;
   description: string;
   suggestion: string;
@@ -21,9 +28,10 @@ export interface DeviationProfile {
   summary: string;
 }
 
+// 内存存储，仅在无数据库时作为权威数据源
 const answerStore: AnswerRecord[] = [];
 
-const deviationTypeMap: Record<string, DeviationItem['type']> = {
+const deviationTypeMap: Record<string, Exclude<DeviationType, '正确'>> = {
   'tang-q1': '管到/写到混淆',
   'tang-q2': '管到/写到混淆',
   'tang-q3': '管到/写到混淆',
@@ -36,7 +44,7 @@ const deviationTypeMap: Record<string, DeviationItem['type']> = {
   'ming-q5': '走到/管到混淆',
 };
 
-const suggestionMap: Record<DeviationItem['type'], string> = {
+export const suggestionMap: Record<DeviationType, string> = {
   '管到/写到混淆': '建议用唐代安西都护府一页做对比讲解：直辖与羁縻是两种不同的管辖方式',
   '走到/管到混淆': '建议区分行迹到达与行政管辖：玄奘走到的地方不等于唐朝管到的地方',
   '写到/管到混淆': '建议区分文献记载与实际设治：《禹贡》九州是写到，不是管到',
@@ -44,7 +52,11 @@ const suggestionMap: Record<DeviationItem['type'], string> = {
   '正确': '该知识点掌握良好',
 };
 
-export function recordAnswer(
+export function resolveDeviationType(questionId: string): DeviationType {
+  return deviationTypeMap[questionId] ?? '正确';
+}
+
+export function recordAnswerMemory(
   studentId: string,
   classId: string,
   questionId: string,
@@ -59,24 +71,27 @@ export function recordAnswer(
   });
 }
 
-export function getDeviationProfile(classId: string): DeviationProfile {
-  const classAnswers = answerStore.filter(a => a.classId === classId);
-  const totalAnswers = classAnswers.length;
-  const totalStudents = new Set(classAnswers.map(a => a.studentId)).size;
+/** 由一批作答记录聚合画像，内存与数据库两条路径共用。 */
+export function buildProfile(
+  classId: string,
+  records: { studentId: string; questionId: string }[],
+): DeviationProfile {
+  const totalAnswers = records.length;
+  const totalStudents = new Set(records.map(r => r.studentId)).size;
 
-  const typeCounts: Record<string, number> = {};
-  for (const ans of classAnswers) {
-    const type = deviationTypeMap[ans.questionId] ?? '正确';
-    typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+  const typeCounts: Partial<Record<DeviationType, number>> = {};
+  for (const r of records) {
+    const t = resolveDeviationType(r.questionId);
+    typeCounts[t] = (typeCounts[t] ?? 0) + 1;
   }
 
-  const deviations: DeviationItem[] = Object.entries(typeCounts)
+  const deviations: DeviationItem[] = (Object.entries(typeCounts) as [DeviationType, number][])
     .filter(([type]) => type !== '正确')
     .map(([type, count]) => ({
-      type: type as DeviationItem['type'],
+      type,
       count,
       description: `${count} 人出现"${type}"类型错误`,
-      suggestion: suggestionMap[type as DeviationItem['type']],
+      suggestion: suggestionMap[type],
     }))
     .sort((a, b) => b.count - a.count);
 
@@ -85,11 +100,13 @@ export function getDeviationProfile(classId: string): DeviationProfile {
     ? `本班 ${topDeviation.count} 人${topDeviation.description.replace(/^\d+ 人/, '')}，${topDeviation.suggestion}`
     : '暂无偏差数据';
 
-  return {
+  return { classId, totalAnswers, totalStudents, deviations, summary };
+}
+
+export function getDeviationProfileMemory(classId: string): DeviationProfile {
+  const classAnswers = answerStore.filter(a => a.classId === classId);
+  return buildProfile(
     classId,
-    totalAnswers,
-    totalStudents,
-    deviations,
-    summary,
-  };
+    classAnswers.map(a => ({ studentId: a.studentId, questionId: a.questionId })),
+  );
 }

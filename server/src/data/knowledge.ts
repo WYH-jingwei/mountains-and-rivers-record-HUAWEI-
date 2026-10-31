@@ -281,10 +281,11 @@ const mingEntries: KnowledgeEntry[] = [
 
 const allEntries: KnowledgeEntry[] = [...tangEntries, ...mingEntries];
 
-export function searchKnowledge(question: string): KnowledgeEntry[] {
+/** 关键词打分、过滤与排序。数据库加载与内置内存两条路径共用，保证行为一致。 */
+export function rankEntries(entries: KnowledgeEntry[], question: string): KnowledgeEntry[] {
   const q = question.toLowerCase().trim();
 
-  const scored = allEntries.map(entry => {
+  const scored = entries.map(entry => {
     let score = 0;
     for (const kw of entry.keywords) {
       if (q.includes(kw.toLowerCase())) score += 2;
@@ -294,9 +295,14 @@ export function searchKnowledge(question: string): KnowledgeEntry[] {
     return { entry, score };
   });
 
-  const matched = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(s => s.entry);
+}
 
-  return matched.map(s => s.entry);
+export function searchKnowledge(question: string): KnowledgeEntry[] {
+  return rankEntries(allEntries, question);
 }
 
 export function getEntriesByDynasty(dynasty: 'tang' | 'ming'): KnowledgeEntry[] {
