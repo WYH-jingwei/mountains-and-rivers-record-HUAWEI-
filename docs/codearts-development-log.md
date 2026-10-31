@@ -253,6 +253,45 @@ MapAction { dynasty: 'tang'|'ming'; year?: number;
 
 **验证结果**：前端 `npm run build`（vue-tsc + vite）通过；四类图层分支均落地，真实点击无控制台错误；地图 `items=22` 加载正常。行迹镜头由既有 `routeView` 按整条路线叠加朝代疆域框统一取景，跨幅较大时接近全景属既有设计，不影响站点绘制与生长。
 
+### 2.11 材料池扩充、hybrid 检索打磨、悬浮窗与响应式（本地联调，未部署）
+
+#### （1）阶段0 审查收口
+- 停掉后台服务后跑 `npm run verify`，基线 **20 passed / 0 failed**；通读后端 qa/grader/vector-store/generator/client/knowledge-repo 与前端三端，确认架构无硬伤。
+- Git 工作区干净，`.env`、`dist`、`node_modules` 均未被跟踪。
+
+#### （2）阶段1 扩池技术改造（1a）
+- 地图 `focusOnAction`：把 `nameMap={tang:'唐',ming:'明'}` 替换为**全量 22 朝代拼音→中文 codeMap**，未命中再按原值 indexOf（兼容直传中文）。
+- journey 人物选择通用化：新增 `act.figure` 优先 → 否则按 `defaultFigure={tang:'玄奘',ming:'郑和'}` → 再否则取该朝首个带 route 者；匹配不到回退切朝+focus，不报错。
+- 后端类型放宽：`KnowledgeEntry.dynasty`、`getEntriesByDynasty` 由 `'tang'|'ming'` 改为 `string`；`MapAction` 增 `figure?:string`；`EntryRow.dynasty` 改 string；lecture 去掉类型断言。
+- schema：两个 `dynasty` 字段 ENUM→VARCHAR，迁移 `001_dynasty_to_varchar.sql` 对现有库执行成功。
+
+#### （3）阶段1 首批扩充条目（1b）
+- 新增 **20 条**（秦3、西汉4、东汉3、隋2、元4、清4），同步写入 `knowledge.ts`、`seed-data.sql`，迁移 `002_expanded_entries.sql` 落库。
+- 落库核对：**knowledge_entries=40、evidence=80、map_actions=39**；朝代分布 qin3/xihan4/donghan3/sui2/tang10/yuan4/ming10/qing4。
+
+#### （4）扩池回归与 hybrid 元数据过滤（阶段2 核心）
+- **回归现象**：扩池后“宋朝疆域有多大”被新条目语义误召回（top1 yuan-01 0.648 ≥ 旧阈值 0.6），level3 误判为 level1。
+- 40 条语料分数标定：同朝代真实命中 top1 ≥0.70；跨朝代邻近误召回 0.60~0.65；域外/无关 ≤0.59。
+- **修复方案（不依赖单一阈值）**：新增 `dynasty-detect.ts` 纯规则识别问题朝代（含“汉”→西汉/东汉、“宋”→不在库等映射）。
+  - 识别出朝代但全部不在库（如宋）→ 直接 level3，不做语义召回；
+  - 识别出可答朝代 → `semanticSearch` 先按 dynasty 元数据过滤候选，同朝代内用**宽松阈值 0.45** 宽进，多口径再由 0.93 分数比严格把关；
+  - 识别不出朝代走全局 → 用**严格阈值 0.68** 兜底（卡在真实命中 0.70 之下、误召回 0.65 之上）。
+- 无朝代泛问（如“最西到哪”“疆域有多大”）跨朝代候选互相竞争且低于 0.68，按 level3 让学生澄清，避免武断指错朝代，属严谨安全行为。
+- **相关问题**：`buildRelated` 基于同朝代、共享关键词动态生成最多 3 条 `relatedQuestions`（不改表结构、不参与分级），前端可点击直接追问。
+
+#### （5）史料问答可拖动顶层悬浮窗（MapView.vue）
+- 问答面板由右栏固定布局改为 `position:fixed` 顶层悬浮窗（z-index 1000），地图全屏铺满。
+- pointer events 拖拽（统一鼠标/触摸），实时边界限制（标题栏始终在视口内）；支持收起/展开、关闭（带右下角重开按钮）；位置与收起状态经 `localStorage` 持久化。
+- 控制按钮 `pointerdown.stop`，避免点按误触发拖拽。
+
+#### （6）界面响应式/自适应
+- 清除 Vite 模板遗留的 `#app { width:1126px; text-align:center; border-inline }`，改为全宽全高、左对齐的无干扰容器。
+- 三端媒体查询：TeachView 两栏在 ≤900px 改单列；LearnView/导航/卡片在 ≤560px 收紧内边距；悬浮窗在 ≤480px 近全宽。
+
+#### 验证结果
+- 后端 `npm run build`（tsc）、前端 `npm run build`（vue-tsc + vite）均通过；最终 `npm run verify` **20 passed / 0 failed**（条件答保持 level2、范围声明保持 level3）。
+- 浏览器实测：拖拽/边界/收起/关闭/重开、相关问题点击追问、地图 postMessage 联动（点击后地图 cur=13 唐、视图飞行到对应坐标）全部通过，无控制台错误。
+
 ## 3. CodeArts 使用记录
 
 ### 3.1 开发方式
@@ -286,6 +325,8 @@ MapAction { dynasty: 'tang'|'ming'; year?: number;
 - [x] RDS 数据接入（MySQL 连接层 + 优雅降级；专用账号 history；已完成真实初始化与读写联调，2026-10-31）
 - [x] postMessage 地图联动闭环（`__MAP.focusOnAction` 统一入口 + 同源校验；修复 Vue Proxy 的 DataCloneError；admin/military/journey 四分支实测通过；2026-10-31 本地联调，详见 2.10）
 - [x] 真实模型接入与 RAG 检索（bge-m3 向量 + openpangu-2.0-flash 润色；四档规则分级保持不变；2026-10-31 本地联调通过，verify 20/20；详见 2.9）
+- [x] 材料池扩充至 40 条 + hybrid 元数据过滤/双轨阈值/相关问题（2026-10-31，verify 20/20；详见 2.11）
+- [x] 史料问答可拖动顶层悬浮窗 + 三端响应式自适应（2026-10-31；详见 2.11）
 - [ ] 鸿蒙展陈端联调（手机控制 + 大屏接收，页面骨架已存在）
 - [ ] 昇腾边缘离线推理（方案已写，暂不实现）
 - [ ] ECS 实际部署与验证（**按用户要求，前四步审查通过后再进行**）
