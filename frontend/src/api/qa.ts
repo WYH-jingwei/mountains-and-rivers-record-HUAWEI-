@@ -13,6 +13,12 @@ export interface MapAction {
   year?: number
   layer: 'admin' | 'military' | 'journey' | 'cultural'
   focus?: [number, number]
+  figure?: string
+}
+
+export interface RelatedQuestion {
+  id: string
+  question: string
 }
 
 export interface GradedResponse {
@@ -21,6 +27,7 @@ export interface GradedResponse {
   evidence: Evidence[]
   uncertainty: string[]
   mapAction?: MapAction
+  relatedQuestions?: RelatedQuestion[]
 }
 
 export async function askQuestion(question: string): Promise<GradedResponse> {

@@ -42,4 +42,15 @@
   flex: 1;
   overflow: hidden;
 }
+
+@media (max-width: 560px) {
+  .top-nav {
+    padding: 0.4rem 0.6rem;
+    gap: 0.5rem;
+  }
+  .nav-link {
+    padding: 0.25rem 0.5rem;
+    font-size: 13px;
+  }
+}
 </style>

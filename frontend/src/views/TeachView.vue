@@ -312,4 +312,24 @@ onMounted(() => {
   padding: 2rem;
   color: #888;
 }
+
+/* 窄屏：左右两栏改为单列堆叠，头部允许换行 */
+@media (max-width: 900px) {
+  .teach-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .teach-body {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .teach-view {
+    padding: 0.75rem;
+  }
+  .lecture-section,
+  .deviation-section {
+    padding: 0.75rem;
+  }
+}
 </style>

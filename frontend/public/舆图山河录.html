@@ -3160,23 +3160,34 @@ window.INTRO_SCENES=[
      */
     focusOnAction: function (act) {
       if (!act || typeof act !== 'object') return;
-      var nameMap = { tang: '唐', ming: '明' };
-      var idx = window.__MAP.indexOf(nameMap[act.dynasty] || act.dynasty);
+      // 全朝代拼音代码 → 地图内中文朝代名；未命中代码时直接按原值（兼容直接传中文）
+      var codeMap = {
+        xia: '夏', shang: '商', xizhou: '西周', chunqiu: '春秋', zhanguo: '战国',
+        qin: '秦', xihan: '西汉', donghan: '东汉', sanguo: '三国', xijin: '西晋',
+        dongjin: '东晋十六国', nanbeichao: '南北朝', sui: '隋', tang: '唐',
+        wudai: '五代十国', liaosong: '辽宋夏金', nansong: '南宋', yuan: '元',
+        ming: '明', qing: '清', minguo: '中华民国', prc: '新中国'
+      };
+      var dynName = codeMap[act.dynasty] || act.dynasty;
+      var idx = window.__MAP.indexOf(dynName);
 
       // 走到（行迹）：复用内置人物路线做生长动画，镜头由 routeView 取景
       if (act.layer === 'journey') {
         var di = idx >= 0 ? idx : cur;
         var dyn = DYNASTIES[di];
         if (dyn && dyn.figures && dyn.figures.length) {
-          var prefer = act.dynasty === 'ming' ? '郑和' : '玄奘';
-          var fig = null;
+          // 人物优先用 mapAction.figure 指定；否则按朝代默认（唐玄奘/明郑和）；再否则取该朝首个带路线者
+          var defaultFigure = { tang: '玄奘', ming: '郑和' };
+          var preferName = act.figure || defaultFigure[act.dynasty] || null;
+          var fig = null, matched = null;
           for (var i = 0; i < dyn.figures.length; i++) {
             var f = dyn.figures[i];
             if (f.route && f.route.length > 1) {
-              if (!fig || f.name === prefer) fig = f;
-              if (f.name === prefer) break;
+              if (!fig) fig = f;
+              if (preferName && f.name === preferName) { matched = f; break; }
             }
           }
+          if (matched) fig = matched;
           if (fig) { showRoute(fig.route, di, fig.routeFocus); return; }
         }
       }

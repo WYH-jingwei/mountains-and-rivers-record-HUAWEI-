@@ -304,4 +304,20 @@ onMounted(() => {
   text-decoration: none;
   font-size: 14px;
 }
+
+/* 窄屏：收紧内边距，头部允许换行，卡片不贴边 */
+@media (max-width: 560px) {
+  .learn-view {
+    padding: 0.75rem;
+  }
+  .learn-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .intro-card,
+  .question-card,
+  .result-card {
+    padding: 1rem;
+  }
+}
 </style>
