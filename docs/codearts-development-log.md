@@ -208,12 +208,21 @@ mountains-and-rivers-record(HUAWEI)/
 - 后端测试：5 项端到端测试全部通过
 - API 一致性：前端 API 客户端与后端路由签名完全匹配
 
-## 4. 待完成事项
+## 4. 待完成事项（随推进持续更新）
 
+- [x] 版本库初始化与基线提交（2026-10-31，commit `427016b`，165 文件）
+- [x] Redis 客户端接入与降级封装（`db/redis.ts`；本地 6379 实例可用，无实例时自动降级）
 - [ ] postMessage 地图联动注入（地图 HTML 需添加消息监听器）
-- [ ] RDS 数据迁移脚本（从 knowledge.ts 导入到 MySQL）
-- [ ] Redis 缓存层实现（QA 结果缓存、讲解包缓存）
-- [ ] ECS 实际部署与验证
-- [ ] CodeArts 流水线配置（CI/CD）
-- [ ] 鸿蒙展陈端（手机控制 + 大屏接收）
-- [ ] 昇腾边缘离线推理
+- [ ] RDS 数据接入（MySQL 连接层 + 从 knowledge.ts 迁移；`schema.sql`/`seed-data.sql` 已就绪）
+- [ ] 真实模型接入与 RAG 检索（embedding + LLM，四档规则分级保持不变）
+- [ ] 鸿蒙展陈端联调（手机控制 + 大屏接收，页面骨架已存在）
+- [ ] 昇腾边缘离线推理（方案已写，暂不实现）
+- [ ] ECS 实际部署与验证（**按用户要求，前四步审查通过后再进行**）
+- [ ] CodeArts 流水线配置 CI/CD（部署阶段进行）
+
+## 5. 版本库基线与提交规范
+
+- 2026-10-31 在项目根目录建立 Git 仓库（主分支 `main`），根 `.gitignore` 排除 `node_modules`、`dist`、`.workbuddy`、`.codeartsdoer`、`.arts`、`.env` 等。
+- 基线提交：`427016b chore: 初始化版本库并固化既有作品与三端骨架基线 [AI]`。
+- 后续提交的类型、协作标记（`[AI]` / `[人工修改]` / `[AI+人工]`）与人机协作流程，统一遵循 `docs/commits-and-collaboration.md`。
+- 本地开发环境（已核实）：Node v22.23.2、npm 10.9.8、Git 2.35；MySQL 8.4 监听 3306（禅道自带库在 3307，互不影响）；Redis 监听 6379，无密码可连。
