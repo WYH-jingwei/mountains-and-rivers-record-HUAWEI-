@@ -3152,6 +3152,62 @@ window.INTRO_SCENES=[
       for (var q = 0; q < DYNASTIES.length; q++) if (DYNASTIES[q].name === nm) return q;
       return -1;
     },
+    /*
+     * 问答侧栏 → 地图联动入口（postMessage 接收后端 mapAction）。
+     * action: { dynasty:'tang'|'ming', year?, layer:'admin'|'military'|'journey'|'cultural', focus?:[lng,lat] }
+     * 职责：切到对应朝代时点；行迹层复用人物路线生长；确保对应图层可见；按 focus 经纬度飞行定位。
+     * 不隐藏其他层，保留“管到/写到/走到”三层同框。
+     */
+    focusOnAction: function (act) {
+      if (!act || typeof act !== 'object') return;
+      var nameMap = { tang: '唐', ming: '明' };
+      var idx = window.__MAP.indexOf(nameMap[act.dynasty] || act.dynasty);
+
+      // 走到（行迹）：复用内置人物路线做生长动画，镜头由 routeView 取景
+      if (act.layer === 'journey') {
+        var di = idx >= 0 ? idx : cur;
+        var dyn = DYNASTIES[di];
+        if (dyn && dyn.figures && dyn.figures.length) {
+          var prefer = act.dynasty === 'ming' ? '郑和' : '玄奘';
+          var fig = null;
+          for (var i = 0; i < dyn.figures.length; i++) {
+            var f = dyn.figures[i];
+            if (f.route && f.route.length > 1) {
+              if (!fig || f.name === prefer) fig = f;
+              if (f.name === prefer) break;
+            }
+          }
+          if (fig) { showRoute(fig.route, di, fig.routeFocus); return; }
+        }
+      }
+
+      if (idx >= 0 && idx !== cur) selectDynasty(idx, { instant: true, noScroll: true });
+
+      // year → 该朝代最接近的内部时点（phase）
+      if (typeof act.year === 'number') {
+        var d = DYNASTIES[cur];
+        if (d && d.phases && d.phases.length) {
+          var best = 0, bd = 1e18;
+          for (var p = 0; p < d.phases.length; p++) {
+            var dd = Math.abs(d.phases[p].y - act.year);
+            if (dd < bd) { bd = dd; best = p; }
+          }
+          selectPhase(best);
+        }
+      }
+
+      // 对应图层确保可见（默认全开，此处仅补开可能被用户关掉的层；不做互斥隐藏）
+      if (act.layer === 'military') showAnchors = true;
+      if (act.layer === 'admin') showAdmin = true;
+      if (act.layer === 'cultural') showTopo = true;
+      render();
+
+      // focus 为 [经度, 纬度]，view.cx/cy 本身即经纬度，直接作为飞行中心
+      if (act.focus && act.focus.length === 2) {
+        var lng = Number(act.focus[0]), lat = Number(act.focus[1]);
+        if (isFinite(lng) && isFinite(lat)) tweenTo({ cx: lng, cy: lat, s: 16 }, 720);
+      }
+    },
     viewState: function () { return { cx: view.cx, cy: view.cy, s: view.s, route: routePts ? routePts.length : 0, ghost: ghostRings ? ghostRings.length : 0 }; }
   };
 
@@ -4547,15 +4603,13 @@ window.TERRAIN={meta:{"lng0": 55.0, "lng1": 152.0, "lat0": 0.0, "lat1": 64.0, "w
 <div id="el-popper-container-589"></div>
 <script>
 (function(){
-  var dynastyIndex = { 'tang': 13, 'ming': 18, '唐': 13, '明': 18 };
+  // 接收问答侧栏（父页面）postMessage 下发的地图动作 {dynasty,year,layer,focus}；父页面与本 iframe 同源
   window.addEventListener('message', function(e){
+    if (e.origin && location.origin && e.origin !== location.origin) return;
     var d = e.data;
     if (!d || !d.dynasty) return;
-    var idx = dynastyIndex[d.dynasty];
-    if (idx == null) return;
-    if (typeof selectDynasty === 'function') selectDynasty(idx, { instant: true });
-    if (d.focus && typeof tweenTo === 'function') {
-      tweenTo({ cx: d.focus[0], cy: d.focus[1], s: 18 }, 700);
+    if (window.__MAP && typeof window.__MAP.focusOnAction === 'function') {
+      window.__MAP.focusOnAction(d);
     }
   });
 })();

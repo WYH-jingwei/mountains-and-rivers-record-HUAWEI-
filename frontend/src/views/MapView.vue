@@ -37,7 +37,10 @@ function handleMapAction(action: GradedResponse['mapAction']) {
   if (!action) return
   const iframe = document.getElementById('map-iframe') as HTMLIFrameElement
   if (iframe?.contentWindow) {
-    iframe.contentWindow.postMessage(action, '*')
+    // response.mapAction 是 Vue 响应式代理(Proxy)，postMessage 结构化克隆无法克隆 Proxy，
+    // 先序列化为普通纯对象再发送，避免 DataCloneError
+    const payload = JSON.parse(JSON.stringify(action)) as GradedResponse['mapAction']
+    iframe.contentWindow.postMessage(payload, '*')
   }
 }
 </script>
