@@ -92,3 +92,9 @@ export async function searchKnowledgeRepo(question: string): Promise<KnowledgeEn
   if (dbEntries) return rankEntries(dbEntries, question);
   return rankEntries(getAllEntries(), question);
 }
+
+/** 取全部知识条目（数据库优先，无库时用内置内存），用于构建向量库。 */
+export async function getAllEntriesRepo(): Promise<KnowledgeEntry[]> {
+  const dbEntries = await loadEntriesFromDb();
+  return dbEntries ?? getAllEntries();
+}
