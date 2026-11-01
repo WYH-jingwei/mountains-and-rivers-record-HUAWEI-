@@ -1,18 +1,27 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { askQuestion, type GradedResponse, type RelatedQuestion } from '../api/qa'
 
 const question = ref('')
-const response = ref<GradedResponse | null>(null)
 const loading = ref(false)
 
-// ---- 悬浮窗状态 ----
-const panelPos = ref({ x: 0, y: 0 })
-const collapsed = ref(false)
-const closed = ref(true) // 桌面宠物常驻，初始先显示宠物、点击再展开面板
-const isDragging = ref(false)
-const POS_KEY = 'qa-panel-pos'
-const COLLAPSE_KEY = 'qa-panel-collapsed'
+// ---- 对话气泡窗（closed=true 时仅显示常驻宠物，false 时在宠物右侧展开对话流）----
+const closed = ref(true)
+
+interface ChatMsg {
+  id: number
+  role: 'user' | 'pet'
+  text: string
+  level?: number
+  evidence?: GradedResponse['evidence']
+  uncertainty?: string[]
+  related?: RelatedQuestion[]
+  mapAction?: GradedResponse['mapAction']
+  pending?: boolean
+}
+const messages = ref<ChatMsg[]>([])
+let msgSeq = 0
+const chatBody = ref<HTMLElement | null>(null)
 
 // ---- 常驻卷轴宠物（可拖动；轻点展开面板，拖动不触发点击）----
 const petPos = ref({ x: 16, y: 80 })
@@ -44,16 +53,37 @@ const levelColors: Record<number, string> = {
 
 async function doAsk(qText: string) {
   const q = qText.trim()
-  if (!q) return
-  question.value = q
+  if (!q || loading.value) return
+  question.value = ''
+  messages.value.push({ id: ++msgSeq, role: 'user', text: q })
+  const petId = ++msgSeq
+  messages.value.push({ id: petId, role: 'pet', text: '', pending: true })
+  await scrollToBottom()
   loading.value = true
-  response.value = null
   try {
-    response.value = await askQuestion(q)
+    const res = await askQuestion(q)
+    const idx = messages.value.findIndex((m) => m.id === petId)
+    if (idx >= 0) {
+      messages.value[idx] = {
+        id: petId,
+        role: 'pet',
+        text: res.answer,
+        level: res.level,
+        evidence: res.evidence,
+        uncertainty: res.uncertainty,
+        related: res.relatedQuestions,
+        mapAction: res.mapAction,
+      }
+    }
   } catch (e) {
     console.error(e)
+    const idx = messages.value.findIndex((m) => m.id === petId)
+    if (idx >= 0) {
+      messages.value[idx] = { id: petId, role: 'pet', text: '史料检索暂时不可用，请稍后再试。' }
+    }
   } finally {
     loading.value = false
+    await scrollToBottom()
   }
 }
 
@@ -63,6 +93,12 @@ function handleAsk() {
 
 function askRelated(rq: RelatedQuestion) {
   return doAsk(rq.question)
+}
+
+async function scrollToBottom() {
+  await nextTick()
+  const el = chatBody.value
+  if (el) el.scrollTop = el.scrollHeight
 }
 
 function handleMapAction(action: GradedResponse['mapAction']) {
@@ -76,53 +112,8 @@ function handleMapAction(action: GradedResponse['mapAction']) {
   }
 }
 
-// ---- 拖拽（pointer events，统一鼠标/触摸）----
-const drag = { active: false, startX: 0, startY: 0, originX: 0, originY: 0 }
-
-function clampPos(x: number, y: number) {
-  const w = window.innerWidth
-  const h = window.innerHeight
-  return {
-    // 至少保留约 120px 标题栏在屏内，避免整窗被拖出视口
-    x: Math.min(Math.max(x, 0), Math.max(0, w - 120)),
-    y: Math.min(Math.max(y, 0), Math.max(0, h - 44)),
-  }
-}
-
-function startDrag(e: PointerEvent) {
-  drag.active = true
-  drag.startX = e.clientX
-  drag.startY = e.clientY
-  drag.originX = panelPos.value.x
-  drag.originY = panelPos.value.y
-  isDragging.value = true
-  window.addEventListener('pointermove', onDrag)
-  window.addEventListener('pointerup', endDrag)
-}
-
-function onDrag(e: PointerEvent) {
-  if (!drag.active) return
-  const nx = drag.originX + (e.clientX - drag.startX)
-  const ny = drag.originY + (e.clientY - drag.startY)
-  panelPos.value = clampPos(nx, ny)
-}
-
-function endDrag() {
-  drag.active = false
-  isDragging.value = false
-  window.removeEventListener('pointermove', onDrag)
-  window.removeEventListener('pointerup', endDrag)
-  localStorage.setItem(POS_KEY, JSON.stringify(panelPos.value))
-}
-
 function onResize() {
-  panelPos.value = clampPos(panelPos.value.x, panelPos.value.y)
   petPos.value = clampPet(petPos.value.x, petPos.value.y)
-}
-
-function toggleCollapse() {
-  collapsed.value = !collapsed.value
-  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
 }
 
 function closePanel() {
@@ -132,6 +123,20 @@ function closePanel() {
 function openPanel() {
   closed.value = false
 }
+
+// 气泡窗贴在宠物右侧；右侧空间不足时自动改贴左侧，并避免顶部越界
+const CHAT_W = 332
+const chatPos = computed(() => {
+  const petW = 84
+  const gap = 10
+  const top = Math.min(petPos.value.y, Math.max(8, window.innerHeight - 440))
+  const rightX = petPos.value.x + petW + gap
+  if (window.innerWidth - rightX >= CHAT_W + 8) {
+    return { left: rightX, top, side: 'right' as const }
+  }
+  const leftX = petPos.value.x - CHAT_W - gap
+  return { left: Math.max(8, leftX), top, side: 'left' as const }
+})
 
 function clampPet(x: number, y: number) {
   const w = window.innerWidth
@@ -182,19 +187,6 @@ function onPetTap() {
 }
 
 onMounted(() => {
-  const saved = localStorage.getItem(POS_KEY)
-  if (saved) {
-    try {
-      const p = JSON.parse(saved) as { x: number; y: number }
-      panelPos.value = clampPos(p.x, p.y)
-    } catch {
-      panelPos.value = clampPos(window.innerWidth - 380, 88)
-    }
-  } else {
-    panelPos.value = clampPos(window.innerWidth - 380, 88)
-  }
-  collapsed.value = localStorage.getItem(COLLAPSE_KEY) === '1'
-
   const petSaved = localStorage.getItem(PET_KEY)
   if (petSaved) {
     try {
@@ -211,8 +203,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
-  window.removeEventListener('pointermove', onDrag)
-  window.removeEventListener('pointerup', endDrag)
   window.removeEventListener('pointermove', onPetDrag)
   window.removeEventListener('pointerup', endPetDrag)
 })
@@ -230,7 +220,6 @@ onUnmounted(() => {
     </div>
 
     <button
-      v-if="closed"
       class="pet-scroll"
       :class="{ grabbing: petGrabbing, land: petAnim === 'land', tap: petAnim === 'tap' }"
       :style="{ left: petPos.x + 'px', top: petPos.y + 'px' }"
@@ -255,93 +244,80 @@ onUnmounted(() => {
     </button>
 
     <div
-      v-else
-      class="qa-float"
-      :class="{ dragging: isDragging }"
-      :style="{ left: panelPos.x + 'px', top: panelPos.y + 'px' }"
+      v-if="!closed"
+      class="chat-bubble"
+      :class="chatPos.side"
+      :style="{ left: chatPos.left + 'px', top: chatPos.top + 'px' }"
     >
-      <div class="qa-titlebar" @pointerdown="startDrag">
+      <div class="chat-titlebar">
         <span class="qa-book-icon" aria-label="史料问答"></span>
         <div class="qa-controls">
-          <button
-            class="icon-btn"
-            :title="collapsed ? '展开' : '收起'"
-            @pointerdown.stop
-            @click="toggleCollapse"
-          >
-            {{ collapsed ? '▢' : '—' }}
-          </button>
-          <button
-            class="icon-btn"
-            title="关闭"
-            @pointerdown.stop
-            @click="closePanel"
-          >
-            ✕
-          </button>
+          <button class="icon-btn" title="收起对话（回到卷轴）" @click="closePanel">✕</button>
         </div>
       </div>
 
-      <div v-show="!collapsed" class="qa-body">
-        <div class="qa-input">
-          <input
-            v-model="question"
-            type="text"
-            placeholder="问一个问题，如：唐朝最西到哪？"
-            @keyup.enter="handleAsk"
-          />
-          <button :disabled="loading" @click="handleAsk">
-            {{ loading ? '查询中...' : '提问' }}
-          </button>
+      <div ref="chatBody" class="chat-body">
+        <div v-if="messages.length === 0" class="chat-empty">
+          垂询史籍：疆域四至、行军路线、丝路往来……
         </div>
 
-        <div v-if="response" class="qa-response">
-          <div class="response-level" :style="{ background: levelColors[response.level] }">
-            {{ levelLabels[response.level] }}
-          </div>
+        <div v-for="m in messages" :key="m.id" class="msg-row" :class="m.role">
+          <span v-if="m.role === 'pet'" class="msg-avatar">
+            <span class="qa-book-icon"></span>
+          </span>
+          <div class="bubble">
+            <div v-if="m.pending" class="typing">
+              <span></span><span></span><span></span>
+            </div>
+            <template v-else>
+              <span v-if="m.level" class="response-level" :style="{ background: levelColors[m.level!] }">
+                {{ levelLabels[m.level!] }}
+              </span>
+              <p class="response-answer">{{ m.text }}</p>
 
-          <p class="response-answer">{{ response.answer }}</p>
-
-          <div v-if="response.evidence.length > 0" class="evidence-section">
-            <h4>出处</h4>
-            <div v-for="(ev, i) in response.evidence" :key="i" class="evidence-card">
-              <div class="evidence-source">{{ ev.source }}</div>
-              <div class="evidence-quote">"{{ ev.quote }}"</div>
-              <div class="evidence-confidence" :class="`conf-${ev.confidence}`">
-                {{ ev.confidence === 'high' ? '高置信' : ev.confidence === 'medium' ? '中置信' : '低置信' }}
+              <div v-if="m.evidence && m.evidence.length > 0" class="evidence-section">
+                <h4>出处</h4>
+                <div v-for="(ev, i) in m.evidence" :key="i" class="evidence-card">
+                  <div class="evidence-source">{{ ev.source }}</div>
+                  <div class="evidence-quote">"{{ ev.quote }}"</div>
+                  <div class="evidence-confidence" :class="`conf-${ev.confidence}`">
+                    {{ ev.confidence === 'high' ? '高置信' : ev.confidence === 'medium' ? '中置信' : '低置信' }}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div v-if="response.uncertainty.length > 0" class="uncertainty-section">
-            <h4>不确定项</h4>
-            <ul>
-              <li v-for="(u, i) in response.uncertainty" :key="i">{{ u }}</li>
-            </ul>
-          </div>
+              <div v-if="m.uncertainty && m.uncertainty.length > 0" class="uncertainty-section">
+                <h4>不确定项</h4>
+                <ul>
+                  <li v-for="(u, i) in m.uncertainty" :key="i">{{ u }}</li>
+                </ul>
+              </div>
 
-          <button
-            v-if="response.mapAction"
-            class="map-action-btn"
-            @click="handleMapAction(response.mapAction)"
-          >
-            在地图上查看
-          </button>
-
-          <div v-if="response.relatedQuestions && response.relatedQuestions.length > 0" class="related-section">
-            <h4>相关问题</h4>
-            <div class="related-list">
-              <button
-                v-for="rq in response.relatedQuestions"
-                :key="rq.id"
-                class="related-btn"
-                @click="askRelated(rq)"
-              >
-                {{ rq.question }}
+              <button v-if="m.mapAction" class="map-action-btn" @click="handleMapAction(m.mapAction)">
+                在地图上查看
               </button>
-            </div>
+
+              <div v-if="m.related && m.related.length > 0" class="related-section">
+                <h4>相关追问</h4>
+                <div class="related-list">
+                  <button v-for="rq in m.related" :key="rq.id" class="related-btn" @click="askRelated(rq)">
+                    {{ rq.question }}
+                  </button>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
+      </div>
+
+      <div class="chat-input">
+        <input
+          v-model="question"
+          type="text"
+          placeholder="问一处疆域、一条路线，如：唐朝最西到哪？"
+          @keyup.enter="handleAsk"
+        />
+        <button :disabled="loading" @click="handleAsk">{{ loading ? '…' : '发问' }}</button>
       </div>
     </div>
   </div>
@@ -363,12 +339,13 @@ onUnmounted(() => {
 }
 
 /* 悬浮窗：卷轴卷宗外观（脱离文档流、覆盖地图的可拖动面板），功能逻辑不变 */
-.qa-float {
+/* 对话气泡窗：贴宠物右侧（空间不足自动贴左侧），古风宣纸，多轮消息流 */
+.chat-bubble {
   position: fixed;
   z-index: 1000;
-  width: 360px;
+  width: 332px;
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 24px);
+  max-height: min(460px, calc(100vh - 24px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -378,42 +355,25 @@ onUnmounted(() => {
     repeating-linear-gradient(0deg, rgba(120, 90, 50, 0.05) 0 1px, transparent 1px 4px),
     linear-gradient(180deg, #f4e7c5 0%, #ecdcaf 45%, #e4d19f 100%);
   border: 1px solid #8a6a44;
-  border-radius: 6px;
+  border-radius: 10px;
   box-shadow:
     0 14px 44px rgba(0, 0, 0, 0.6),
     inset 0 0 24px rgba(120, 86, 40, 0.18);
+  animation: chat-pop 0.22s ease;
 }
-/* 上下卷轴木杆 */
-.qa-float::before,
-.qa-float::after {
-  content: "";
-  display: block;
-  flex: 0 0 10px;
-  background: linear-gradient(180deg, #8a5a33 0%, #5b3a22 50%, #7a4e2c 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 235, 190, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+@keyframes chat-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.qa-float::after {
-  flex-basis: 8px;
-  background: linear-gradient(180deg, #7a4e2c, #5b3a22, #8a5a33);
-}
-.qa-float.dragging {
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.72);
-}
-
-.qa-titlebar {
+.chat-titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.7rem 0.5rem 0.55rem;
+  padding: 0.45rem 0.6rem;
   background: linear-gradient(180deg, #7a4e2c, #63391f);
   border-bottom: 1px solid #4a2a14;
-  cursor: grab;
   user-select: none;
-  touch-action: none;
-}
-.qa-titlebar:active {
-  cursor: grabbing;
 }
 /* 标题栏纯书卷图标（无文字）：纸面 + 上下卷轴杆 + 行线 */
 .qa-book-icon {
@@ -463,17 +423,89 @@ onUnmounted(() => {
   color: #fff;
 }
 
-.qa-body {
-  padding: 0.8rem;
+.chat-body {
+  flex: 1;
+  min-height: 120px;
+  max-height: 340px;
   overflow-y: auto;
+  padding: 0.7rem 0.7rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.chat-empty {
+  font-size: 13px;
+  color: #8a6a44;
+  line-height: 1.7;
+  padding: 0.3rem 0.2rem;
+}
+.msg-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-end;
+}
+.msg-row.user {
+  flex-direction: row-reverse;
+}
+.msg-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.bubble {
+  max-width: 82%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  position: relative;
+  word-break: break-word;
+}
+.msg-row.pet .bubble {
+  background: #fbf5e2;
+  border: 1px solid #c9b283;
+  border-bottom-left-radius: 3px;
+  color: #2e2417;
+}
+.msg-row.user .bubble {
+  background: linear-gradient(180deg, #a33a2a, #8c2f21);
+  color: #f6ead0;
+  border: 1px solid #6e2418;
+  border-bottom-right-radius: 3px;
+}
+.msg-row.user .response-answer {
+  color: #f6ead0;
+  margin-bottom: 0;
+}
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  padding: 0.3rem 0.2rem;
+}
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8a6a44;
+  animation: typing-dot 1.1s infinite ease-in-out;
+}
+.typing span:nth-child(2) { animation-delay: 0.18s; }
+.typing span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
-.qa-input {
+.chat-input {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  padding: 0.55rem 0.6rem 0.65rem;
+  border-top: 1px solid #c9b283;
 }
-.qa-input input {
+.chat-input input {
   flex: 1;
   min-width: 0;
   padding: 0.5rem 0.6rem;
@@ -484,15 +516,13 @@ onUnmounted(() => {
   font-size: 14px;
   font-family: inherit;
 }
-.qa-input input::placeholder {
-  color: #9a8460;
-}
-.qa-input input:focus {
+.chat-input input::placeholder { color: #9a8460; }
+.chat-input input:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(163, 58, 42, 0.18);
 }
-.qa-input button {
-  padding: 0.5rem 0.9rem;
+.chat-input button {
+  padding: 0.5rem 0.85rem;
   background: linear-gradient(180deg, #a33a2a, #8c2f21);
   border: 1px solid #6e2418;
   color: #f6ead0;
@@ -502,18 +532,8 @@ onUnmounted(() => {
   font-family: inherit;
   letter-spacing: 1px;
 }
-.qa-input button:hover {
-  filter: brightness(1.08);
-}
-.qa-input button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.qa-response {
-  border-top: 1px dashed #8a6a44;
-  padding-top: 1rem;
-}
+.chat-input button:hover { filter: brightness(1.08); }
+.chat-input button:disabled { opacity: 0.55; cursor: not-allowed; }
 .response-level {
   display: inline-block;
   padding: 2px 10px;
@@ -682,9 +702,9 @@ onUnmounted(() => {
   100% { transform: scale(1); }
 }
 
-/* 窄屏：悬浮窗几乎占满宽度，避免横向溢出 */
+/* 窄屏：对话气泡几乎占满宽度，避免横向溢出 */
 @media (max-width: 480px) {
-  .qa-float {
+  .chat-bubble {
     width: calc(100vw - 16px);
   }
 }
