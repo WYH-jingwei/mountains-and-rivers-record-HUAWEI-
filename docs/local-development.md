@@ -40,7 +40,7 @@ mysql -h 127.0.0.1 -u root -p < sql/schema.sql
 mysql -h 127.0.0.1 -u root -p < sql/seed-data.sql
 ```
 
-`schema.sql` 建库 `history_geo_classroom` 与 10 张表；`seed-data.sql` 写入 20 条知识、出处、地图动作及偏差映射。
+`schema.sql` 建库 `history_geo_classroom` 与各表；`seed-data.sql` 写入知识、出处、地图动作及偏差映射（当前 49 知识 / 98 出处 / 48 地图动作）。
 
 ### 数据流向
 
@@ -69,5 +69,5 @@ npm run build    # TypeScript 编译到 dist
 - TypeScript 类型检查与构建：通过。
 - 端到端自测：20/20 通过。
 - Redis：连接成功，缓存写入与命中验证通过。
-- MySQL：已完成真实初始化与读写联调。使用最小权限专用账号 `history`（经 `.env` 连接，root 密码不写入应用配置），启动日志 `MySQL connected`；表与种子数据就绪（20 知识 / 40 出处 / 19 地图动作），作答经 API 真实落库 `answer_records`（`persisted=true`），画像从数据库聚合。
+- MySQL：已完成真实初始化与读写联调。使用最小权限专用账号 `history`（经 `.env` 连接，root 密码不写入应用配置），启动日志 `MySQL connected`；表与种子数据就绪（49 知识 / 98 出处 / 48 地图动作），作答经 API 真实落库 `answer_records`（`persisted=true`），画像从数据库聚合。
 - 降级路径：移除 `.env` 或停掉本地服务后，自动回退内存实现，功能不中断（已验证）。

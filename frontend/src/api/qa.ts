@@ -30,7 +30,15 @@ export interface GradedResponse {
   relatedQuestions?: RelatedQuestion[]
 }
 
-export async function askQuestion(question: string): Promise<GradedResponse> {
-  const { data } = await api.post<GradedResponse>('/qa', { question })
+export interface HistoryTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export async function askQuestion(
+  question: string,
+  history?: HistoryTurn[],
+): Promise<GradedResponse> {
+  const { data } = await api.post<GradedResponse>('/qa', { question, history })
   return data
 }

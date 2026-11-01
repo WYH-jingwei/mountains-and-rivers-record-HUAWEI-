@@ -554,6 +554,132 @@ const expandedEntries: KnowledgeEntry[] = [
     caliber: '条约',
     mapAction: { dynasty: 'qing', year: 1689, layer: 'military', focus: [124.1, 52.4] },
   },
+
+  // ---------- 阶段2 扩充：秦 / 西汉 / 东汉 / 隋（2026-11-01）----------
+  // ---------- 秦 ----------
+  {
+    id: 'qin-04',
+    dynasty: 'qin',
+    question: '秦长城的起止与作用？',
+    keywords: ['长城', '临洮', '辽东', '蒙恬', '万余里'],
+    answer: '秦连接战国旧长城并加以修缮，西起临洮、东至辽东，延袤万余里，依托地形设险塞，作为北方农牧分界的防御工程，是工程而非新拓疆界。',
+    evidence: [
+      { source: '《史记·蒙恬列传》', quote: '起临洮，至辽东，延袤万余里', confidence: 'high' },
+      { source: '《史记·蒙恬列传》', quote: '因地形，用制险塞', confidence: 'medium' },
+    ],
+    caliber: '工程',
+    mapAction: { dynasty: 'qin', year: -215, layer: 'military', focus: [109.8, 40.7] },
+  },
+  {
+    id: 'qin-05',
+    dynasty: 'qin',
+    question: '秦朝北击匈奴与河南地是怎么回事？',
+    keywords: ['匈奴', '河南地', '蒙恬', '九原', '北防'],
+    answer: '秦始皇派蒙恬发兵三十万北击匈奴，略取河南地（今河套），自榆中沿黄河至阴山设四十四县、筑城塞，后置九原郡，是秦向北方实际推进的军事管辖。',
+    evidence: [
+      { source: '《史记·秦始皇本纪》', quote: '使将军蒙恬发兵三十万人北击胡，略取河南地', confidence: 'high' },
+      { source: '《史记·秦始皇本纪》', quote: '西北斥逐匈奴，自榆中并河以东，属之阴山', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'qin', year: -215, layer: 'military', focus: [109.0, 40.5] },
+  },
+  {
+    id: 'qin-06',
+    dynasty: 'qin',
+    question: '秦朝的车同轨与驰道直道？',
+    keywords: ['车同轨', '驰道', '直道', '书同文', '交通'],
+    answer: '秦统一度量衡、车同轨、书同文字，修筑四通八达的驰道与由咸阳直通九原的直道，构成中央集权的交通与政令网络，属制度与工程建设，非疆域扩张。',
+    evidence: [
+      { source: '《史记·秦始皇本纪》', quote: '一法度衡石丈尺，车同轨，书同文字', confidence: 'high' },
+      { source: '《汉书·贾山传》', quote: '为驰道于天下，东穷燕齐，南极吴楚', confidence: 'medium' },
+    ],
+    caliber: '制度',
+    mapAction: { dynasty: 'qin', year: -220, layer: 'cultural', focus: [108.95, 34.27] },
+  },
+
+  // ---------- 西汉 ----------
+  {
+    id: 'xihan-05',
+    dynasty: 'xihan',
+    question: '汉武帝北击匈奴的主要战役？',
+    keywords: ['卫青', '霍去病', '漠北', '狼居胥', '匈奴'],
+    answer: '汉武帝用卫青、霍去病多次北击，经漠南、河西、漠北诸役，前119年漠北之战封狼居胥、禅姑衍、登临翰海，重创匈奴主力，是军事行动，所取河南、河西之地随后设郡直辖。',
+    evidence: [
+      { source: '《汉书·霍去病传》', quote: '封狼居胥山，禅于姑衍，登临翰海', confidence: 'high' },
+      { source: '《史记·卫将军骠骑列传》', quote: '骠骑将军去病率师……约轻赍，绝大幕', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'xihan', year: -119, layer: 'military', focus: [110.0, 47.5] },
+  },
+
+  // ---------- 东汉 ----------
+  {
+    id: 'donghan-04',
+    dynasty: 'donghan',
+    question: '东汉重设西域都护与戊己校尉？',
+    keywords: ['西域都护', '戊己校尉', '陈睦', '明帝'],
+    answer: '永平十七年（74）东汉复置西域都护、骑都尉与戊己校尉，重开中原对西域的正式管辖；后因焉耆等反叛、陈睦殁，改由班超以长史身份长期经营，统辖时断时续。',
+    evidence: [
+      { source: '《后汉书·西域传》', quote: '复置西域都护、骑都尉、戊己校尉官', confidence: 'high' },
+      { source: '《后汉书·明帝纪》', quote: '置西域都护、戊己校尉', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'donghan', year: 74, layer: 'admin', focus: [82.96, 41.63] },
+  },
+  {
+    id: 'donghan-05',
+    dynasty: 'donghan',
+    question: '窦宪破北匈奴与燕然勒石？',
+    keywords: ['窦宪', '燕然山', '勒石', '北匈奴', '西迁'],
+    answer: '永元元年（89）窦宪率军大破北匈奴，登燕然山刻石勒功、纪汉威德，北单于远遁，其后北匈奴逐步西迁，南匈奴内附，是东汉北疆的关键军事事件。',
+    evidence: [
+      { source: '《后汉书·窦宪传》', quote: '登燕然山，刻石勒功，纪汉威德', confidence: 'high' },
+      { source: '《后汉书·南匈奴传》', quote: '北单于震慑，弃其辎重，奔走', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'donghan', year: 89, layer: 'military', focus: [103.0, 47.0] },
+  },
+
+  // ---------- 隋 ----------
+  {
+    id: 'sui-03',
+    dynasty: 'sui',
+    question: '隋炀帝西巡与张掖交市？',
+    keywords: ['西巡', '燕支山', '张掖', '二十七国', '四郡'],
+    answer: '大业五年（609）隋炀帝西巡，次燕支山，高昌王、伊吾设等西域二十七国谒于道左，并置西海、河源、鄯善、且末四郡，是隋在河西、青海方向实际设治的推进。',
+    evidence: [
+      { source: '《隋书·炀帝纪》', quote: '次燕支山，高昌王、伊吾设等及西蕃胡二十七国谒于道左', confidence: 'high' },
+      { source: '《隋书·地理志》', quote: '置西海、河源、鄯善、且末等郡', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'sui', year: 609, layer: 'journey', focus: [100.45, 38.93] },
+  },
+  {
+    id: 'sui-04',
+    dynasty: 'sui',
+    question: '隋朝与突厥的关系？',
+    keywords: ['突厥', '启民可汗', '长孙晟', '离强合弱', '和亲'],
+    answer: '隋用长孙晟“离强合弱”之策分化突厥，使其分为东西两部，又以和亲、册封安抚，启民可汗内附称臣、奉觞上寿；突厥诸部多属羁縻，非隋稳定直辖。',
+    evidence: [
+      { source: '《隋书·突厥传》', quote: '启民可汗……奉觞上寿，跪伏甚恭', confidence: 'high' },
+      { source: '《隋书·长孙晟传》', quote: '离强合弱，以制其命', confidence: 'medium' },
+    ],
+    caliber: '羁縻',
+    mapAction: { dynasty: 'sui', year: 607, layer: 'military', focus: [109.0, 40.0] },
+  },
+  {
+    id: 'sui-05',
+    dynasty: 'sui',
+    question: '隋朝的科举与三省六部制？',
+    keywords: ['科举', '进士科', '三省六部', '百官', '制度'],
+    answer: '隋确立三省六部中枢体制，并始建进士科、以考试选官，打破门阀垄断，为后世科举与中央官制奠基；属政治制度建设，不涉及疆域伸缩。',
+    evidence: [
+      { source: '《通典·选举》', quote: '炀帝始建进士科', confidence: 'high' },
+      { source: '《隋书·百官志》', quote: '炀帝即位，多所改革，置三省', confidence: 'medium' },
+    ],
+    caliber: '制度',
+    mapAction: { dynasty: 'sui', year: 606, layer: 'cultural', focus: [112.45, 34.62] },
+  },
 ];
 
 const allEntries: KnowledgeEntry[] = [...tangEntries, ...mingEntries, ...expandedEntries];

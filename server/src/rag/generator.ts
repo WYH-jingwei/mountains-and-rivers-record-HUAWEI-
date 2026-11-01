@@ -45,3 +45,39 @@ export async function generateAnswer(
     return null;
   }
 }
+
+/** 一轮历史问答（用于多轮指代改写）。 */
+export interface HistoryTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/**
+ * 结合最近对话，把学生最新问题改写为“不依赖上下文、可独立检索”的完整问题。
+ * 仅补全指代（它/那里/东边/这个朝代等），不新增历史中没有的事实、不作答；
+ * 调用失败由上层回退为原问题。
+ */
+export async function rewriteQuestion(
+  question: string,
+  history: HistoryTurn[],
+): Promise<string> {
+  const context = history
+    .map(h => `${h.role === 'user' ? '学生' : '助教'}：${h.text}`)
+    .join('\n');
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: [
+        '你是问题改写助手。根据对话历史，把学生最新的问题改写为一个不依赖上下文、可独立检索的完整问题。',
+        '只补全指代（如“它、那里、东边、这个朝代”所指的对象），不得新增历史中没有的事实，不得作答或解释。',
+        '只输出改写后的问句本身，30字以内，不要引号、不要编号。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `对话历史：\n${context}\n\n学生最新问题：${question}`,
+    },
+  ];
+  const out = await chatCompletion(messages, 0.1);
+  return out || question;
+}

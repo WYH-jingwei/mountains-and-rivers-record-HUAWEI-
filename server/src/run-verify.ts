@@ -3,6 +3,7 @@ import cors from 'cors';
 import { qaRouter } from './routes/qa.js';
 import { lectureRouter } from './routes/lecture.js';
 import { deviationRouter } from './routes/deviation.js';
+import { getPool } from './db/mysql.js';
 import http from 'http';
 
 const app = express();
@@ -110,7 +111,13 @@ const server = app.listen(PORT, async () => {
     test('讲解包-明', false, (e as Error).message);
   }
 
-  // 7. Deviation - 记录作答
+  // 7. Deviation - 记录作答（先清理 demo-class 历史作答，保证 verify 幂等、不随运行次数累积）
+  try {
+    const pool = await getPool();
+    if (pool) await pool.query("DELETE FROM answer_records WHERE class_id = 'demo-class'");
+  } catch (e) {
+    console.error('reset demo-class failed:', (e as Error).message);
+  }
   try {
     const r1 = await post('/api/deviation/answer', { studentId: 's1', classId: 'demo-class', questionId: 'tang-q1', answer: '唐朝管到咸海' });
     test('偏差-记录作答1', r1.status === 'recorded');

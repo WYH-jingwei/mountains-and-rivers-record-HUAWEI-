@@ -3,7 +3,7 @@ import { grade, type GradedResponse, type RelatedQuestion } from '../engine/grad
 import { searchKnowledgeRepo, getAllEntriesRepo } from '../data/knowledge-repo.js';
 import type { RetrievalHit, KnowledgeEntry } from '../data/knowledge.js';
 import { semanticSearch } from '../rag/vector-store.js';
-import { generateAnswer } from '../rag/generator.js';
+import { generateAnswer, rewriteQuestion, type HistoryTurn } from '../rag/generator.js';
 import { isEmbeddingConfigured, isLlmConfigured } from '../llm/client.js';
 import { cacheGet, cacheSet } from '../db/redis.js';
 import { detectDynasties } from '../engine/dynasty-detect.js';
@@ -23,7 +23,10 @@ async function retrieve(question: string, dynastyCodes?: string[]): Promise<Retr
   const inDynasty = !!(dynastyCodes && dynastyCodes.length);
   if (isEmbeddingConfigured()) {
     try {
-      return await semanticSearch(question, 5, inDynasty ? 0.45 : 0.68, dynastyCodes);
+      // 语义有命中即返回（保持现有标定不变）；语义为空（如无朝代词的标志性短语卡在全局
+      // 阈值下）时不直接判定域外，落到关键词字面兜底，再给一次召回机会。
+      const semantic = await semanticSearch(question, 5, inDynasty ? 0.45 : 0.68, dynastyCodes);
+      if (semantic.length > 0) return semantic;
     } catch (e) {
       console.error('semanticSearch failed, fallback to keyword:', (e as Error).message);
     }
@@ -67,21 +70,31 @@ function buildRelated(
 }
 
 qaRouter.post('/', async (req, res) => {
-  const { question } = req.body as { question: string };
+  const { question, history } = req.body as { question: string; history?: HistoryTurn[] };
 
   if (!question || !question.trim()) {
     res.status(400).json({ error: '问题不能为空' });
     return;
   }
 
-  const cacheKey = `qa:${question.trim().toLowerCase()}`;
+  // 多轮指代改写：结合最近对话把问题补全为可独立检索的自包含问题；失败/无 LLM 时回退原文
+  let effectiveQuestion = question.trim();
+  if (Array.isArray(history) && history.length > 0 && isLlmConfigured()) {
+    try {
+      effectiveQuestion = await rewriteQuestion(effectiveQuestion, history);
+    } catch (e) {
+      console.error('rewriteQuestion failed, use original:', (e as Error).message);
+    }
+  }
+
+  const cacheKey = `qa:${effectiveQuestion.toLowerCase()}`;
   const cached = await cacheGet<GradedResponse>(cacheKey);
   if (cached) {
     res.json(cached);
     return;
   }
 
-  const dyn = detectDynasties(question);
+  const dyn = detectDynasties(effectiveQuestion);
 
   // 识别出朝代但全部不在库（如宋）→ 直接范围声明，不做语义召回
   if (dyn.codes.length > 0 && dyn.answerableCodes.length === 0) {
@@ -96,7 +109,7 @@ qaRouter.post('/', async (req, res) => {
     return;
   }
 
-  const results = await retrieve(question, dyn.answerableCodes);
+  const results = await retrieve(effectiveQuestion, dyn.answerableCodes);
 
   if (results.length === 0) {
     const graded: GradedResponse = {
@@ -146,7 +159,7 @@ qaRouter.post('/', async (req, res) => {
 
   // 模型仅负责把结论改写为自然语言作答；分级、出处、地图动作、口径保持规则引擎结果
   if (isLlmConfigured()) {
-    const generated = await generateAnswer(question, results.map(h => h.entry));
+    const generated = await generateAnswer(effectiveQuestion, results.map(h => h.entry));
     if (generated) graded.answer = generated;
   }
 

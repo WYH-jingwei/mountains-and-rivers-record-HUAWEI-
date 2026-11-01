@@ -55,13 +55,21 @@ async function doAsk(qText: string) {
   const q = qText.trim()
   if (!q || loading.value) return
   question.value = ''
+  // 取最近 2 轮（4 条）作为上下文，供后端做指代改写
+  const history = messages.value
+    .filter((m) => !m.pending && m.text)
+    .slice(-4)
+    .map((m) => ({
+      role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
+      text: m.text.slice(0, 80),
+    }))
   messages.value.push({ id: ++msgSeq, role: 'user', text: q })
   const petId = ++msgSeq
   messages.value.push({ id: petId, role: 'pet', text: '', pending: true })
   await scrollToBottom()
   loading.value = true
   try {
-    const res = await askQuestion(q)
+    const res = await askQuestion(q, history)
     const idx = messages.value.findIndex((m) => m.id === petId)
     if (idx >= 0) {
       messages.value[idx] = {
