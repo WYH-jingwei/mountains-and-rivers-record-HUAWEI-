@@ -9,10 +9,15 @@ const loading = ref(false)
 // ---- 悬浮窗状态 ----
 const panelPos = ref({ x: 0, y: 0 })
 const collapsed = ref(false)
-const closed = ref(false)
+const closed = ref(true) // 桌面宠物常驻，初始先显示宠物、点击再展开面板
 const isDragging = ref(false)
 const POS_KEY = 'qa-panel-pos'
 const COLLAPSE_KEY = 'qa-panel-collapsed'
+
+// ---- 常驻卷轴宠物（可拖动；轻点展开面板，拖动不触发点击）----
+const petPos = ref({ x: 16, y: 80 })
+const PET_KEY = 'pet-pos'
+const petDrag = { active: false, startX: 0, startY: 0, ox: 0, oy: 0, moved: false }
 
 const levelLabels: Record<number, string> = {
   1: '直答',
@@ -103,6 +108,7 @@ function endDrag() {
 
 function onResize() {
   panelPos.value = clampPos(panelPos.value.x, panelPos.value.y)
+  petPos.value = clampPet(petPos.value.x, petPos.value.y)
 }
 
 function toggleCollapse() {
@@ -114,8 +120,51 @@ function closePanel() {
   closed.value = true
 }
 
-function reopen() {
+function openPanel() {
   closed.value = false
+}
+
+function clampPet(x: number, y: number) {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  return {
+    x: Math.min(Math.max(x, 0), Math.max(0, w - 84)),
+    y: Math.min(Math.max(y, 0), Math.max(0, h - 96)),
+  }
+}
+
+function startPetDrag(e: PointerEvent) {
+  petDrag.active = true
+  petDrag.moved = false
+  petDrag.startX = e.clientX
+  petDrag.startY = e.clientY
+  petDrag.ox = petPos.value.x
+  petDrag.oy = petPos.value.y
+  window.addEventListener('pointermove', onPetDrag)
+  window.addEventListener('pointerup', endPetDrag)
+}
+
+function onPetDrag(e: PointerEvent) {
+  if (!petDrag.active) return
+  if (Math.abs(e.clientX - petDrag.startX) > 4 || Math.abs(e.clientY - petDrag.startY) > 4) {
+    petDrag.moved = true
+  }
+  petPos.value = clampPet(
+    petDrag.ox + (e.clientX - petDrag.startX),
+    petDrag.oy + (e.clientY - petDrag.startY),
+  )
+}
+
+function endPetDrag() {
+  petDrag.active = false
+  window.removeEventListener('pointermove', onPetDrag)
+  window.removeEventListener('pointerup', endPetDrag)
+  localStorage.setItem(PET_KEY, JSON.stringify(petPos.value))
+}
+
+function onPetTap() {
+  if (petDrag.moved) return
+  openPanel()
 }
 
 onMounted(() => {
@@ -131,6 +180,18 @@ onMounted(() => {
     panelPos.value = clampPos(window.innerWidth - 380, 88)
   }
   collapsed.value = localStorage.getItem(COLLAPSE_KEY) === '1'
+
+  const petSaved = localStorage.getItem(PET_KEY)
+  if (petSaved) {
+    try {
+      const p = JSON.parse(petSaved) as { x: number; y: number }
+      petPos.value = clampPet(p.x, p.y)
+    } catch {
+      petPos.value = clampPet(16, window.innerHeight - 104)
+    }
+  } else {
+    petPos.value = clampPet(16, window.innerHeight - 104)
+  }
   window.addEventListener('resize', onResize)
 })
 
@@ -138,6 +199,8 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   window.removeEventListener('pointermove', onDrag)
   window.removeEventListener('pointerup', endDrag)
+  window.removeEventListener('pointermove', onPetDrag)
+  window.removeEventListener('pointerup', endPetDrag)
 })
 </script>
 
@@ -152,8 +215,28 @@ onUnmounted(() => {
       />
     </div>
 
-    <button v-if="closed" class="reopen-btn" @click="reopen">
-      史料问答
+    <button
+      v-if="closed"
+      class="pet-scroll"
+      :style="{ left: petPos.x + 'px', top: petPos.y + 'px' }"
+      @pointerdown="startPetDrag"
+      @click="onPetTap"
+      title="点开史料问答"
+    >
+      <svg class="pet-svg" viewBox="0 0 64 76" aria-hidden="true">
+        <rect x="14" y="4" width="36" height="9" rx="4.5" fill="#6b4423" />
+        <rect x="18" y="11" width="28" height="52" rx="3" fill="#f3e4bd" stroke="#8a6a44" stroke-width="1.2" />
+        <line x1="23" y1="24" x2="41" y2="24" stroke="#b89a68" stroke-width="1.2" />
+        <line x1="23" y1="31" x2="41" y2="31" stroke="#b89a68" stroke-width="1.2" />
+        <line x1="23" y1="48" x2="41" y2="48" stroke="#b89a68" stroke-width="1.2" />
+        <ellipse class="pet-cheek" cx="24" cy="43" rx="3.2" ry="1.7" fill="#d98a7a" opacity="0.55" />
+        <ellipse class="pet-cheek" cx="40" cy="43" rx="3.2" ry="1.7" fill="#d98a7a" opacity="0.55" />
+        <circle class="pet-eye" cx="28.5" cy="38" r="2.3" fill="#33281a" />
+        <circle class="pet-eye" cx="35.5" cy="38" r="2.3" fill="#33281a" />
+        <circle cx="29.3" cy="37.2" r="0.7" fill="#fff" />
+        <circle cx="36.3" cy="37.2" r="0.7" fill="#fff" />
+        <rect x="14" y="63" width="36" height="9" rx="4.5" fill="#5b3a22" />
+      </svg>
     </button>
 
     <div
@@ -520,24 +603,45 @@ onUnmounted(() => {
   color: #3d2512;
 }
 
-.reopen-btn {
+/* 常驻卷轴宠物：可拖动、轻点展开、呼吸浮动 + 眨眼 */
+.pet-scroll {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
   z-index: 1000;
-  padding: 0.7rem 0.9rem;
-  background: linear-gradient(180deg, #a33a2a, #8c2f21);
-  border: 1px solid #6e2418;
-  color: #f6ead0;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-family: inherit;
-  letter-spacing: 1px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 235, 190, 0.3);
+  width: 84px;
+  height: 92px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  animation: pet-float 3s ease-in-out infinite;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.45));
 }
-.reopen-btn:hover {
-  filter: brightness(1.1);
+.pet-scroll:active {
+  cursor: grabbing;
+}
+.pet-scroll:hover .pet-svg {
+  transform: scale(1.08) rotate(-3deg);
+}
+.pet-svg {
+  width: 64px;
+  height: 76px;
+  display: block;
+  margin: 0 auto;
+  transition: transform 0.18s ease;
+}
+.pet-eye {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: pet-blink 4.2s infinite;
+}
+@keyframes pet-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes pet-blink {
+  0%, 91%, 98%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(0.1); }
 }
 
 /* 窄屏：悬浮窗几乎占满宽度，避免横向溢出 */
