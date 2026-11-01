@@ -163,8 +163,7 @@ onUnmounted(() => {
       :style="{ left: panelPos.x + 'px', top: panelPos.y + 'px' }"
     >
       <div class="qa-titlebar" @pointerdown="startDrag">
-        <span class="qa-seal" aria-hidden="true">史</span>
-        <span class="qa-title">史料问答 · 每条皆有出处</span>
+        <span class="qa-book-icon" aria-label="史料问答"></span>
         <div class="qa-controls">
           <button
             class="icon-btn"
@@ -318,33 +317,31 @@ onUnmounted(() => {
 .qa-titlebar:active {
   cursor: grabbing;
 }
-.qa-seal {
+/* 标题栏纯书卷图标（无文字）：纸面 + 上下卷轴杆 + 行线 */
+.qa-book-icon {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #a33a2a;
-  color: #f6ead0;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: bold;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(246, 234, 208, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
-  transform: rotate(-4deg);
+  position: relative;
+  width: 22px;
+  height: 20px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 4px, rgba(120, 90, 50, 0.28) 4px 5px),
+    #f3e4bd;
+  border: 1px solid #8a6a44;
+  border-radius: 2px;
+  box-shadow: inset 0 0 2px rgba(90, 60, 30, 0.35);
 }
-.qa-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: bold;
-  color: #f3e4bd;
-  letter-spacing: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.qa-book-icon::before,
+.qa-book-icon::after {
+  content: "";
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  height: 3px;
+  background: linear-gradient(180deg, #8a5a33, #5b3a22);
+  border-radius: 2px;
 }
+.qa-book-icon::before { top: -2px; }
+.qa-book-icon::after { bottom: -2px; }
 .qa-controls {
   display: flex;
   gap: 0.3rem;
