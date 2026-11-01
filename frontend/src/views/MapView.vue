@@ -18,6 +18,15 @@ const COLLAPSE_KEY = 'qa-panel-collapsed'
 const petPos = ref({ x: 16, y: 80 })
 const PET_KEY = 'pet-pos'
 const petDrag = { active: false, startX: 0, startY: 0, ox: 0, oy: 0, moved: false }
+// 桌宠式手感：抓起中稳定跟随、松手落地回弹、点中脉冲
+const petGrabbing = ref(false)
+const petAnim = ref<'' | 'land' | 'tap'>('')
+function playPetAnim(kind: 'land' | 'tap') {
+  petAnim.value = kind
+  window.setTimeout(() => {
+    if (petAnim.value === kind) petAnim.value = ''
+  }, 320)
+}
 
 const levelLabels: Record<number, string> = {
   1: '直答',
@@ -140,6 +149,8 @@ function startPetDrag(e: PointerEvent) {
   petDrag.startY = e.clientY
   petDrag.ox = petPos.value.x
   petDrag.oy = petPos.value.y
+  petGrabbing.value = true
+  petAnim.value = ''
   window.addEventListener('pointermove', onPetDrag)
   window.addEventListener('pointerup', endPetDrag)
 }
@@ -157,13 +168,16 @@ function onPetDrag(e: PointerEvent) {
 
 function endPetDrag() {
   petDrag.active = false
+  petGrabbing.value = false
   window.removeEventListener('pointermove', onPetDrag)
   window.removeEventListener('pointerup', endPetDrag)
   localStorage.setItem(PET_KEY, JSON.stringify(petPos.value))
+  if (petDrag.moved) playPetAnim('land')
 }
 
 function onPetTap() {
   if (petDrag.moved) return
+  playPetAnim('tap')
   openPanel()
 }
 
@@ -218,6 +232,7 @@ onUnmounted(() => {
     <button
       v-if="closed"
       class="pet-scroll"
+      :class="{ grabbing: petGrabbing, land: petAnim === 'land', tap: petAnim === 'tap' }"
       :style="{ left: petPos.x + 'px', top: petPos.y + 'px' }"
       @pointerdown="startPetDrag"
       @click="onPetTap"
@@ -617,11 +632,24 @@ onUnmounted(() => {
   animation: pet-float 3s ease-in-out infinite;
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.45));
 }
-.pet-scroll:active {
-  cursor: grabbing;
-}
 .pet-scroll:hover .pet-svg {
   transform: scale(1.08) rotate(-3deg);
+}
+/* 抓起：停止呼吸浮动、稳定跟随并轻微放大，像被拎起 */
+.pet-scroll.grabbing {
+  animation: none;
+  cursor: grabbing;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55));
+}
+.pet-scroll.grabbing .pet-svg {
+  transform: scale(1.12);
+}
+/* 松手落地回弹 / 点中脉冲反馈 */
+.pet-scroll.land .pet-svg {
+  animation: pet-land 0.28s ease;
+}
+.pet-scroll.tap .pet-svg {
+  animation: pet-tap 0.22s ease;
 }
 .pet-svg {
   width: 64px;
@@ -642,6 +670,16 @@ onUnmounted(() => {
 @keyframes pet-blink {
   0%, 91%, 98%, 100% { transform: scaleY(1); }
   94%, 96% { transform: scaleY(0.1); }
+}
+@keyframes pet-land {
+  0% { transform: scale(1.1); }
+  45% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+@keyframes pet-tap {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.9); }
+  100% { transform: scale(1); }
 }
 
 /* 窄屏：悬浮窗几乎占满宽度，避免横向溢出 */
