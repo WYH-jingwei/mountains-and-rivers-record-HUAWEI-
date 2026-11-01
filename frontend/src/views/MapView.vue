@@ -163,7 +163,8 @@ onUnmounted(() => {
       :style="{ left: panelPos.x + 'px', top: panelPos.y + 'px' }"
     >
       <div class="qa-titlebar" @pointerdown="startDrag">
-        <span class="qa-title">史料问答 · 每个回答都带出处</span>
+        <span class="qa-seal" aria-hidden="true">史</span>
+        <span class="qa-title">史料问答 · 每条皆有出处</span>
         <div class="qa-controls">
           <button
             class="icon-btn"
@@ -264,24 +265,42 @@ onUnmounted(() => {
   border: none;
 }
 
-/* 悬浮窗：脱离文档流、覆盖在地图之上的顶层可拖动面板 */
+/* 悬浮窗：卷轴卷宗外观（脱离文档流、覆盖地图的可拖动面板），功能逻辑不变 */
 .qa-float {
   position: fixed;
   z-index: 1000;
   width: 360px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 24px);
-  background: #1a1a2e;
-  color: #e0e0e0;
-  border-radius: 10px;
-  border: 1px solid #333;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  color: #33281a;
+  font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+  background:
+    repeating-linear-gradient(0deg, rgba(120, 90, 50, 0.05) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #f4e7c5 0%, #ecdcaf 45%, #e4d19f 100%);
+  border: 1px solid #8a6a44;
+  border-radius: 6px;
+  box-shadow:
+    0 14px 44px rgba(0, 0, 0, 0.6),
+    inset 0 0 24px rgba(120, 86, 40, 0.18);
+}
+/* 上下卷轴木杆 */
+.qa-float::before,
+.qa-float::after {
+  content: "";
+  display: block;
+  flex: 0 0 10px;
+  background: linear-gradient(180deg, #8a5a33 0%, #5b3a22 50%, #7a4e2c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 235, 190, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
+.qa-float::after {
+  flex-basis: 8px;
+  background: linear-gradient(180deg, #7a4e2c, #5b3a22, #8a5a33);
 }
 .qa-float.dragging {
-  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.72);
 }
 
 .qa-titlebar {
@@ -289,8 +308,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.55rem 0.7rem;
-  background: #16213e;
+  padding: 0.5rem 0.7rem 0.5rem 0.55rem;
+  background: linear-gradient(180deg, #7a4e2c, #63391f);
+  border-bottom: 1px solid #4a2a14;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -298,9 +318,29 @@ onUnmounted(() => {
 .qa-titlebar:active {
   cursor: grabbing;
 }
+.qa-seal {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #a33a2a;
+  color: #f6ead0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(246, 234, 208, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  transform: rotate(-4deg);
+}
 .qa-title {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: bold;
+  color: #f3e4bd;
+  letter-spacing: 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -315,16 +355,16 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1px solid #444;
-  color: #ccc;
-  border-radius: 5px;
+  background: rgba(246, 234, 208, 0.12);
+  border: 1px solid rgba(246, 234, 208, 0.35);
+  color: #f3e4bd;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
 }
 .icon-btn:hover {
-  background: #0f3460;
+  background: rgba(163, 58, 42, 0.55);
   color: #fff;
 }
 
@@ -341,88 +381,117 @@ onUnmounted(() => {
 .qa-input input {
   flex: 1;
   min-width: 0;
-  padding: 0.5rem;
-  background: #16213e;
-  border: 1px solid #333;
-  color: #e0e0e0;
+  padding: 0.5rem 0.6rem;
+  background: #fbf5e2;
+  border: 1px solid #8a6a44;
+  color: #33281a;
   border-radius: 4px;
   font-size: 14px;
+  font-family: inherit;
+}
+.qa-input input::placeholder {
+  color: #9a8460;
+}
+.qa-input input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(163, 58, 42, 0.18);
 }
 .qa-input button {
-  padding: 0.5rem 1rem;
-  background: #0f3460;
-  border: none;
-  color: #fff;
+  padding: 0.5rem 0.9rem;
+  background: linear-gradient(180deg, #a33a2a, #8c2f21);
+  border: 1px solid #6e2418;
+  color: #f6ead0;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+  font-family: inherit;
+  letter-spacing: 1px;
+}
+.qa-input button:hover {
+  filter: brightness(1.08);
 }
 .qa-input button:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .qa-response {
-  border-top: 1px solid #333;
+  border-top: 1px dashed #8a6a44;
   padding-top: 1rem;
 }
 .response-level {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 4px;
   font-size: 12px;
   color: #fff;
   margin-bottom: 0.5rem;
+  letter-spacing: 1px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .response-answer {
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.75;
   margin-bottom: 1rem;
+  color: #2e2417;
+  text-align: justify;
 }
 .evidence-section h4,
 .uncertainty-section h4,
 .related-section h4 {
   font-size: 13px;
-  color: #aaa;
-  margin: 0.5rem 0;
+  color: #6b4423;
+  margin: 0.6rem 0 0.4rem;
+  letter-spacing: 2px;
+  border-left: 3px solid #a33a2a;
+  padding-left: 0.4rem;
 }
 .evidence-card {
-  background: #16213e;
-  padding: 0.5rem;
-  border-radius: 4px;
+  background: #f8f0da;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #c9b283;
+  border-left: 3px solid #a33a2a;
+  border-radius: 3px;
   margin-bottom: 0.5rem;
 }
 .evidence-source {
   font-size: 13px;
-  color: #4fc3f7;
+  color: #7a3b1e;
   font-weight: bold;
 }
 .evidence-quote {
   font-size: 12px;
-  color: #ccc;
+  color: #55432c;
   margin: 0.25rem 0;
-  font-style: italic;
+  line-height: 1.6;
 }
 .evidence-confidence {
   font-size: 11px;
 }
-.conf-high { color: #4caf50; }
-.conf-medium { color: #ff9800; }
-.conf-low { color: #f44336; }
+.conf-high { color: #3f7d3a; }
+.conf-medium { color: #b07416; }
+.conf-low { color: #a33a2a; }
 .uncertainty-section ul {
   padding-left: 1rem;
   font-size: 13px;
-  color: #ff9800;
+  color: #8a5a1e;
 }
 .map-action-btn {
   width: 100%;
-  padding: 0.5rem;
-  background: #0f3460;
-  border: none;
-  color: #fff;
+  padding: 0.55rem;
+  background: linear-gradient(180deg, #6b4423, #543218);
+  border: 1px solid #3f2410;
+  color: #f3e4bd;
   border-radius: 4px;
   cursor: pointer;
   margin-top: 0.5rem;
   font-size: 14px;
+  font-family: inherit;
+  letter-spacing: 2px;
+}
+.map-action-btn:hover {
+  filter: brightness(1.1);
 }
 
 .related-section {
@@ -436,15 +505,22 @@ onUnmounted(() => {
 .related-btn {
   text-align: left;
   padding: 0.45rem 0.6rem;
-  background: #0f3460;
-  border: none;
-  color: #cfe3ff;
-  border-radius: 6px;
+  background: #f8f0da;
+  border: 1px solid #c9b283;
+  color: #5a3d20;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
+  font-family: inherit;
+}
+.related-btn::before {
+  content: "◈ ";
+  color: #a33a2a;
 }
 .related-btn:hover {
-  background: #1b4a85;
+  background: #f1e2bd;
+  border-color: #a33a2a;
+  color: #3d2512;
 }
 
 .reopen-btn {
@@ -452,17 +528,19 @@ onUnmounted(() => {
   right: 16px;
   bottom: 16px;
   z-index: 1000;
-  padding: 0.6rem 1rem;
-  background: #0f3460;
-  border: 1px solid #333;
-  color: #fff;
-  border-radius: 24px;
+  padding: 0.7rem 0.9rem;
+  background: linear-gradient(180deg, #a33a2a, #8c2f21);
+  border: 1px solid #6e2418;
+  color: #f6ead0;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-family: inherit;
+  letter-spacing: 1px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 235, 190, 0.3);
 }
 .reopen-btn:hover {
-  background: #1b4a85;
+  filter: brightness(1.1);
 }
 
 /* 窄屏：悬浮窗几乎占满宽度，避免横向溢出 */
