@@ -34,15 +34,31 @@ export function isEmbeddingConfigured(): boolean {
   return Boolean(process.env.LLM_API_KEY && process.env.EMBEDDING_MODEL);
 }
 
+/** 单次上游请求超时（毫秒）：模型侧挂起时及时失败，避免前端问答被无限阻塞。 */
+const REQUEST_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 20000);
+
+/** MaaS 单请求向量条数有限制，构建全库向量时按批串行请求。 */
+const EMBEDDING_BATCH_SIZE = 32;
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.LLM_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.LLM_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (e) {
+    const name = (e as Error).name;
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new Error(`上游请求超时（${REQUEST_TIMEOUT_MS}ms）：${url}`);
+    }
+    throw e;
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -65,6 +81,23 @@ export async function createEmbedding(input: string | string[]): Promise<number[
   return resp.data
     .sort((a, b) => a.index - b.index)
     .map(d => d.embedding);
+}
+
+/** 分批生成向量（每批 32 条），返回顺序与 inputs 一致。 */
+export async function createEmbeddingBatched(
+  inputs: string[],
+  batchSize = EMBEDDING_BATCH_SIZE,
+): Promise<number[][]> {
+  const out: number[][] = [];
+  for (let i = 0; i < inputs.length; i += batchSize) {
+    const batch = inputs.slice(i, i + batchSize);
+    const vecs = await createEmbedding(batch);
+    if (vecs.length !== batch.length) {
+      throw new Error(`embedding 返回条数不匹配：${vecs.length}/${batch.length}`);
+    }
+    out.push(...vecs);
+  }
+  return out;
 }
 
 interface ChatResponse {

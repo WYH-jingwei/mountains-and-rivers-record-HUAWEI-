@@ -2,8 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { exportLecturePackage, type LecturePackage } from '../api/lecture'
 import { getDeviationProfile, type DeviationProfile } from '../api/deviation'
+import { DYNASTIES } from '../constants/dynasties'
 
-const selectedDynasty = ref<'tang' | 'ming'>('tang')
+const selectedDynasty = ref<string>('tang')
 const lecturePackage = ref<LecturePackage | null>(null)
 const deviationProfile = ref<DeviationProfile | null>(null)
 const loading = ref(false)
@@ -40,13 +41,11 @@ onMounted(() => {
       <h2>教师端 · 备课与讲解</h2>
       <div class="dynasty-selector">
         <button
-          :class="{ active: selectedDynasty === 'tang' }"
-          @click="selectedDynasty = 'tang'; loadLecture()"
-        >唐</button>
-        <button
-          :class="{ active: selectedDynasty === 'ming' }"
-          @click="selectedDynasty = 'ming'; loadLecture()"
-        >明</button>
+          v-for="d in DYNASTIES"
+          :key="d.code"
+          :class="{ active: selectedDynasty === d.code }"
+          @click="selectedDynasty = d.code; loadLecture()"
+        >{{ d.label }}</button>
       </div>
     </div>
 

@@ -2,6 +2,7 @@ import type { RowDataPacket } from 'mysql2';
 import { dbQuery } from '../db/mysql.js';
 import {
   getAllEntries,
+  fingerprintEntries,
   rankEntriesScored,
   type KnowledgeEntry,
   type RetrievalHit,
@@ -98,4 +99,9 @@ export async function searchKnowledgeRepo(question: string): Promise<RetrievalHi
 export async function getAllEntriesRepo(): Promise<KnowledgeEntry[]> {
   const dbEntries = await loadEntriesFromDb();
   return dbEntries ?? getAllEntries();
+}
+
+/** 当前数据源（数据库优先）的内容指纹：供向量缓存与问答缓存随数据变更自动失效。 */
+export async function getDataFingerprint(): Promise<string> {
+  return fingerprintEntries(await getAllEntriesRepo());
 }

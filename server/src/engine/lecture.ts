@@ -10,11 +10,21 @@ export interface LecturePackage {
 const dynastyLabels: Record<string, string> = {
   tang: '唐',
   ming: '明',
+  sanguo: '三国',
+  nanbeichao: '南北朝',
+  wudai: '五代十国',
+  liaosong: '辽宋夏金',
+  nansong: '南宋',
 };
 
 const dynastyYears: Record<string, number> = {
   tang: 661,
   ming: 1424,
+  sanguo: 230,
+  nanbeichao: 500,
+  wudai: 938,
+  liaosong: 1005,
+  nansong: 1141,
 };
 
 export function getLecturePackage(dynasty: string): LecturePackage {
@@ -76,6 +86,21 @@ function buildOptions(entry: KnowledgeEntry): string[] {
     }
     if (entry.caliber === '行迹') {
       distractors.push('此为行政管辖范围');
+    }
+  }
+  // 扩池朝代（三国/南北朝/五代/辽宋夏金/南宋）：按口径给出最常见的易混项
+  if (!['tang', 'ming'].includes(entry.dynasty)) {
+    if (entry.caliber === '行迹') {
+      distractors.push('此为行政管辖范围');
+    }
+    if (entry.caliber === '条约') {
+      distractors.push('此为一方的军事行动');
+    }
+    if (entry.caliber === '军事') {
+      distractors.push('此为长期行政建置');
+    }
+    if (entry.caliber === '独立政权') {
+      distractors.push('此为本朝直辖州郡');
     }
   }
   distractors.push('本系统未收录该信息');

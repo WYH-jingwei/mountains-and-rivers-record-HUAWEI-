@@ -1,9 +1,25 @@
 import { Router } from 'express';
-import { grade, type GradedResponse, type RelatedQuestion } from '../engine/grader.js';
-import { searchKnowledgeRepo, getAllEntriesRepo } from '../data/knowledge-repo.js';
+import {
+  grade,
+  gradeLabel,
+  type GradedResponse,
+  type RelatedQuestion,
+  type RetrievalTrace,
+} from '../engine/grader.js';
+import {
+  searchKnowledgeRepo,
+  getAllEntriesRepo,
+  getDataFingerprint,
+} from '../data/knowledge-repo.js';
 import type { RetrievalHit, KnowledgeEntry } from '../data/knowledge.js';
 import { semanticSearch } from '../rag/vector-store.js';
-import { generateAnswer, rewriteQuestion, type HistoryTurn } from '../rag/generator.js';
+import { caliberScoreRatio, fuse } from '../rag/fusion.js';
+import {
+  generateAnswer,
+  groundingIssues,
+  rewriteQuestion,
+  type HistoryTurn,
+} from '../rag/generator.js';
 import { isEmbeddingConfigured, isLlmConfigured } from '../llm/client.js';
 import { cacheGet, cacheSet } from '../db/redis.js';
 import { detectDynasties } from '../engine/dynasty-detect.js';
@@ -14,27 +30,56 @@ export const qaRouter = Router();
 const MULTI_CALIBER_SCORE_RATIO = 0.93;
 
 /**
- * 检索：配置 embedding 时走语义召回（失败回退关键词），否则走关键词检索。统一返回带分数命中项。
- * dynastyCodes 非空时限定候选朝代（hybrid 元数据过滤）：跨朝代误召回已被元数据排除，
- * 故同朝代内用宽松阈值 0.45 宽进，再由多口径分数比 0.93 严格把关；识别不出朝代走全局
- * 兜底时才用严格阈值 0.68 防止跨朝代邻近误召回。
+ * 混合检索：语义召回与关键词召回两路都取回，按 RRF 名次分融合，两路都命中的条目录为 hybrid。
+ * 语义路径保留原有阈值（限定朝代 0.45 宽进、全局 0.68 严格兜底）；关键词路径受朝代过滤约束。
  */
 async function retrieve(question: string, dynastyCodes?: string[]): Promise<RetrievalHit[]> {
   const inDynasty = !!(dynastyCodes && dynastyCodes.length);
+
+  let semantic: RetrievalHit[] = [];
   if (isEmbeddingConfigured()) {
     try {
-      // 语义有命中即返回（保持现有标定不变）；语义为空（如无朝代词的标志性短语卡在全局
-      // 阈值下）时不直接判定域外，落到关键词字面兜底，再给一次召回机会。
-      const semantic = await semanticSearch(question, 5, inDynasty ? 0.45 : 0.68, dynastyCodes);
-      if (semantic.length > 0) return semantic;
+      semantic = await semanticSearch(question, 5, inDynasty ? 0.45 : 0.68, dynastyCodes);
     } catch (e) {
       console.error('semanticSearch failed, fallback to keyword:', (e as Error).message);
     }
   }
+
   const kw = await searchKnowledgeRepo(question);
-  return inDynasty
-    ? kw.filter(h => dynastyCodes!.includes(h.entry.dynasty))
-    : kw;
+  const keywordHits = inDynasty ? kw.filter(h => dynastyCodes!.includes(h.entry.dynasty)) : kw;
+
+  return fuse(semantic, keywordHits, 5);
+}
+
+const VIA_LABELS: Record<string, string> = {
+  semantic: '语义',
+  keyword: '关键词',
+  hybrid: '语义+关键词',
+};
+
+/** 组装检索溯源（只用于解释展示，不参与分级）。 */
+function buildTrace(
+  effectiveQuestion: string,
+  rewritten: boolean,
+  dynastyCodes: string[],
+  hits: RetrievalHit[],
+  rationale: string,
+): RetrievalTrace {
+  return {
+    effectiveQuestion,
+    rewritten,
+    dynastyCodes,
+    hits: hits.map(h => ({
+      id: h.entry.id,
+      dynasty: h.entry.dynasty,
+      question: h.entry.question,
+      via: h.via ?? 'keyword',
+      score: Number(h.score.toFixed(4)),
+      ...(h.semScore != null ? { semScore: Number(h.semScore.toFixed(4)) } : {}),
+      ...(h.kwScore != null ? { kwScore: h.kwScore } : {}),
+    })),
+    rationale,
+  };
 }
 
 /**
@@ -87,7 +132,10 @@ qaRouter.post('/', async (req, res) => {
     }
   }
 
-  const cacheKey = `qa:${effectiveQuestion.toLowerCase()}`;
+  const rewritten = effectiveQuestion !== question.trim();
+  // 缓存键带上数据指纹：条目一改，旧问答缓存自动失效，不再返回基于旧材料的答案
+  const fp = await getDataFingerprint();
+  const cacheKey = `qa:${fp}:${effectiveQuestion.toLowerCase()}`;
   const cached = await cacheGet<GradedResponse>(cacheKey);
   if (cached) {
     res.json(cached);
@@ -102,7 +150,14 @@ qaRouter.post('/', async (req, res) => {
       level: 3,
       answer: '本系统暂未收录该朝代的相关史料',
       evidence: [],
-      uncertainty: ['超出本系统当前收录范围（秦、两汉、隋、唐、元、明、清）'],
+      uncertainty: ['超出本系统当前收录范围（秦、两汉、三国、南北朝、隋、唐、五代十国、辽宋夏金、南宋、元、明、清）'],
+      retrieval: buildTrace(
+        effectiveQuestion,
+        rewritten,
+        dyn.answerableCodes,
+        [],
+        `识别到朝代「${dyn.codes.join('、')}」，但本系统未收录该朝代，按范围声明(L3)处理，不做召回`,
+      ),
     };
     await cacheSet(cacheKey, graded, 300);
     res.json(graded);
@@ -116,7 +171,14 @@ qaRouter.post('/', async (req, res) => {
       level: 3,
       answer: '本系统暂未收录该问题的相关史料',
       evidence: [],
-      uncertainty: ['超出本系统当前收录范围（秦、两汉、隋、唐、元、明、清）'],
+      uncertainty: ['超出本系统当前收录范围（秦、两汉、三国、南北朝、隋、唐、五代十国、辽宋夏金、南宋、元、明、清）'],
+      retrieval: buildTrace(
+        effectiveQuestion,
+        rewritten,
+        dyn.answerableCodes,
+        [],
+        '语义召回与关键词召回均无命中，按范围声明(L3)处理',
+      ),
     };
     await cacheSet(cacheKey, graded, 300);
     res.json(graded);
@@ -134,8 +196,7 @@ qaRouter.post('/', async (req, res) => {
     second &&
       second.entry.dynasty === top.entry.dynasty &&
       second.entry.caliber !== top.entry.caliber &&
-      top.score > 0 &&
-      second.score / top.score >= MULTI_CALIBER_SCORE_RATIO &&
+      caliberScoreRatio(top, second) >= MULTI_CALIBER_SCORE_RATIO &&
       sameFamily,
   );
 
@@ -157,11 +218,31 @@ qaRouter.post('/', async (req, res) => {
   const allEntries = await getAllEntriesRepo();
   graded.relatedQuestions = buildRelated(top, results, allEntries);
 
-  // 模型仅负责把结论改写为自然语言作答；分级、出处、地图动作、口径保持规则引擎结果
+  // 模型仅负责把结论改写为自然语言作答；分级、出处、地图动作、口径保持规则引擎结果。
+  // 事实护栏：改写出材料外数字或长度失控时，丢弃生成结果、保留规则引擎答案。
   if (isLlmConfigured()) {
-    const generated = await generateAnswer(effectiveQuestion, results.map(h => h.entry));
-    if (generated) graded.answer = generated;
+    const entries = results.map(h => h.entry);
+    const generated = await generateAnswer(effectiveQuestion, entries);
+    if (generated) {
+      const issues = groundingIssues(generated, effectiveQuestion, entries);
+      if (issues.length > 0) {
+        console.warn(`generated answer rejected (${issues.join('; ')})，回退规则引擎答案`);
+      } else {
+        graded.answer = generated;
+      }
+    }
   }
+
+  const semText = top.semScore != null ? `语义 ${top.semScore.toFixed(2)}` : '无语义分';
+  graded.retrieval = buildTrace(
+    effectiveQuestion,
+    rewritten,
+    dyn.answerableCodes,
+    results,
+    hasMultipleCalibers && second
+      ? `首条 ${top.entry.id}（${VIA_LABELS[top.via ?? 'keyword']}，${semText}）与次条 ${second.entry.id} 同朝代、口径不同且分数比 ≥ ${MULTI_CALIBER_SCORE_RATIO}，按${gradeLabel(graded.level)}(L${graded.level})处理`
+      : `首条 ${top.entry.id}（${VIA_LABELS[top.via ?? 'keyword']}，${semText}），无并列口径，按${gradeLabel(graded.level)}(L${graded.level})处理`,
+  );
 
   await cacheSet(cacheKey, graded, 300);
   res.json(graded);

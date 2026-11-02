@@ -72,6 +72,11 @@ const server = app.listen(PORT, async () => {
     test('QA直答 (Level 1)', r.level === 1, `level=${r.level}, answer=${r.answer?.substring(0, 30)}...`);
     test('QA直答 - 有出处', r.evidence?.length > 0, `${r.evidence?.length} 条出处`);
     test('QA直答 - 有地图动作', !!r.mapAction, `layer=${r.mapAction?.layer}`);
+    test(
+      'QA直答 - 检索溯源',
+      !!r.retrieval?.hits?.length && !!r.retrieval?.rationale,
+      `首条=${r.retrieval?.hits?.[0]?.id} (${r.retrieval?.hits?.[0]?.via})`,
+    );
   } catch (e) {
     test('QA直答', false, (e as Error).message);
   }
@@ -84,12 +89,24 @@ const server = app.listen(PORT, async () => {
     test('QA条件答', false, (e as Error).message);
   }
 
-  // 4. QA - 范围声明
+  // 4. QA - 范围声明（与本系统史料无涉的问题应明确作答：超出范围）
   try {
-    const r = await post('/api/qa', { question: '宋朝疆域有多大？' });
+    const r = await post('/api/qa', { question: '罗马帝国的首都是哪座城市？' });
     test('QA范围声明 (Level 3)', r.level === 3, `level=${r.level}, answer=${r.answer?.substring(0, 20)}...`);
   } catch (e) {
     test('QA范围声明', false, (e as Error).message);
+  }
+
+  // 4b. QA - 扩池朝代（三国/辽宋夏金/南宋）
+  try {
+    const r1 = await post('/api/qa', { question: '赤壁之战改变了什么？' });
+    test('扩池-三国', r1.level >= 1 && r1.mapAction?.dynasty === 'sanguo', `level=${r1.level}, dynasty=${r1.mapAction?.dynasty}`);
+    const r2 = await post('/api/qa', { question: '澶渊之盟约定了什么？' });
+    test('扩池-辽宋夏金', r2.level >= 1 && r2.mapAction?.dynasty === 'liaosong', `level=${r2.level}, dynasty=${r2.mapAction?.dynasty}`);
+    const r3 = await post('/api/qa', { question: '绍兴和议划界在哪？' });
+    test('扩池-南宋', r3.level >= 1 && r3.mapAction?.dynasty === 'nansong', `level=${r3.level}, dynasty=${r3.mapAction?.dynasty}`);
+  } catch (e) {
+    test('扩池朝代', false, (e as Error).message);
   }
 
   // 5. Lecture - 唐朝
@@ -109,6 +126,15 @@ const server = app.listen(PORT, async () => {
     test('讲解包-明 - 课堂问题', r.questions?.length > 0, `${r.questions?.length} 个问题`);
   } catch (e) {
     test('讲解包-明', false, (e as Error).message);
+  }
+
+  // 6b. Lecture - 南宋（扩池朝代）
+  try {
+    const r = await post('/api/lecture/export', { dynasty: 'nansong' });
+    test('讲解包-南宋 - 朝代名', r.dynasty === '南宋', `dynasty=${r.dynasty}`);
+    test('讲解包-南宋 - 课堂问题', r.questions?.length > 0, `${r.questions?.length} 个问题`);
+  } catch (e) {
+    test('讲解包-南宋', false, (e as Error).message);
   }
 
   // 7. Deviation - 记录作答（先清理 demo-class 历史作答，保证 verify 幂等、不随运行次数累积）

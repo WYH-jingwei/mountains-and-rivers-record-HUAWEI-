@@ -25,6 +25,36 @@ function formatMaterials(entries: KnowledgeEntry[]): string {
     .join('\n\n');
 }
 
+/** 生成答案的长度上限：超过视为模型失控（超出课堂讲解长度），回退规则引擎原文。 */
+const MAX_ANSWER_CHARS = 400;
+
+/**
+ * 事实护栏：检查模型改写结果是否越出材料。
+ * - 数字（年份/面积/里程/兵数等）必须能在材料、出处引文或学生问题中找到，否则视为编造；
+ * - 长度超过阈值视为模型失控。
+ * 返回问题清单，为空表示可采信。
+ */
+export function groundingIssues(
+  answer: string,
+  question: string,
+  entries: KnowledgeEntry[],
+): string[] {
+  const materials = [
+    question,
+    ...entries.map(e =>
+      [e.question, e.answer, e.evidence.map(ev => `${ev.source} ${ev.quote}`).join(' ')].join(' '),
+    ),
+  ].join(' ');
+
+  const allowed = new Set(materials.match(/[0-9]+/g) ?? []);
+  const issues = (answer.match(/[0-9]+/g) ?? [])
+    .filter(n => !allowed.has(n))
+    .map(n => `材料外数字 ${n}`);
+
+  if (answer.length > MAX_ANSWER_CHARS) issues.push(`超长 ${answer.length} 字`);
+  return issues;
+}
+
 /** 基于召回条目生成自然语言答案；调用失败时返回 null 由上层回退。 */
 export async function generateAnswer(
   question: string,

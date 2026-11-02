@@ -13,10 +13,17 @@ export interface KnowledgeEntry {
   mapAction?: MapAction;
 }
 
-/** 统一检索结果：命中条目 + 检索分数（关键词打分为整数分，语义检索为余弦相似度）。 */
+/** 统一检索结果：命中条目 + 融合分数；保留各路径原始分数供多口径判定与可解释性展示。 */
 export interface RetrievalHit {
   entry: KnowledgeEntry;
+  /** 融合排序分（RRF 名次分）；只有关键词路径命中时为关键词原始分。 */
   score: number;
+  /** 语义余弦相似度（语义路径命中时存在）。 */
+  semScore?: number;
+  /** 关键词原始打分（关键词路径命中时存在）。 */
+  kwScore?: number;
+  /** 命中路径：semantic / keyword / hybrid（语义与关键词两路均命中）。 */
+  via?: 'semantic' | 'keyword' | 'hybrid';
 }
 
 const tangEntries: KnowledgeEntry[] = [
@@ -682,11 +689,293 @@ const expandedEntries: KnowledgeEntry[] = [
   },
 ];
 
-const allEntries: KnowledgeEntry[] = [...tangEntries, ...mingEntries, ...expandedEntries];
+/**
+ * 扩池批次（2026-11）：补齐中学历史教学重点朝代——三国、南北朝、五代十国、辽宋夏金、南宋。
+ * 朝代代码与地图 codeMap 一致：sanguo / nanbeichao / wudai / liaosong / nansong。
+ * 口径沿用既有词汇（直辖、羁縻、行迹、独立政权、制度、军事、条约），不新增未定义的分类。
+ */
+const songEntries: KnowledgeEntry[] = [
+  // ===== 三国 =====
+  {
+    id: 'sanguo-01',
+    dynasty: 'sanguo',
+    question: '官渡之战的关键在哪？',
+    keywords: ['官渡', '袁绍', '曹操', '乌巢'],
+    answer: '建安五年（200）曹操于官渡（今河南中牟东北）以少胜多击败袁绍，焚其乌巢粮屯，奠定统一北方的基础。此役是军事胜负，不改变当时割据政权并立的格局。',
+    evidence: [
+      { source: '《三国志·武帝纪》', quote: '公乃留曹洪守，自将步骑五千，袭击绍屯', confidence: 'medium' },
+      { source: '《三国志·袁绍传》', quote: '太祖破绍于官渡', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'sanguo', year: 200, layer: 'military', focus: [114.3, 34.9] },
+  },
+  {
+    id: 'sanguo-02',
+    dynasty: 'sanguo',
+    question: '赤壁之战改变了什么？',
+    keywords: ['赤壁', '孙刘', '曹操', '208'],
+    answer: '建安十三年（208）孙权、刘备联军于赤壁（今湖北赤壁市）大破曹操水军，阻止其南下统一，为三国鼎立奠定基础。此为军事转折，三方实际控制线仍随战事推移。',
+    evidence: [
+      { source: '《三国志·吴主传》', quote: '瑜、普为左右督，各领万人，与备俱进，遇于赤壁，大破曹公军', confidence: 'high' },
+      { source: '《三国志·周瑜传》', quote: '与备并力逆曹公，遇于赤壁', confidence: 'high' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'sanguo', year: 208, layer: 'military', focus: [113.9, 29.7] },
+  },
+  {
+    id: 'sanguo-03',
+    dynasty: 'sanguo',
+    question: '三国时到过台湾吗？',
+    keywords: ['夷洲', '台湾', '卫温', '浮海'],
+    answer: '吴黄龙二年（230）孙权遣卫温、诸葛直率甲士万人浮海至夷洲（今台湾）。这是中央政权对台湾最早的明确航行记录，属行迹到达，非行政设治。',
+    evidence: [
+      { source: '《三国志·吴主传》', quote: '遣将军卫温、诸葛直将甲士万人浮海求夷洲及亶洲', confidence: 'high' },
+      { source: '《三国志·吴主传》', quote: '得夷洲数千人还', confidence: 'medium' },
+    ],
+    caliber: '行迹',
+    mapAction: { dynasty: 'sanguo', year: 230, layer: 'journey', focus: [121.0, 23.7] },
+  },
+  // ===== 南北朝 =====
+  {
+    id: 'nanbei-01',
+    dynasty: 'nanbeichao',
+    question: '淝水之战为什么重要？',
+    keywords: ['淝水', '前秦', '东晋', '383'],
+    answer: '太元八年（383）东晋军在淝水（今安徽寿县一带）击败前秦苻坚大军，前秦瓦解，北方重归分裂。此役保住了南方政权，也决定了此后南北对峙的格局。',
+    evidence: [
+      { source: '《晋书·谢玄传》', quote: '秦兵大败，自相蹈藉而死者，蔽野塞川', confidence: 'high' },
+      { source: '《晋书·苻坚载记》', quote: '坚至寿阳，登城望八公山，草木皆类人形', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'nanbeichao', year: 383, layer: 'military', focus: [116.5, 32.5] },
+  },
+  {
+    id: 'nanbei-02',
+    dynasty: 'nanbeichao',
+    question: '北魏什么时候统一北方？',
+    keywords: ['北魏', '统一北方', '北凉', '439'],
+    answer: '北魏太延五年（439）灭北凉，结束十六国割据，统一北方。此后南北对峙延续近百年，北方由北魏（后分裂为东魏、西魏）控制。',
+    evidence: [
+      { source: '《魏书·世祖纪》', quote: '太延五年，亲征凉州，沮渠牧犍降', confidence: 'medium' },
+      { source: '《魏书·地形志》', quote: '魏氏宅洛，遂有河北、河南之地', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'nanbeichao', year: 439, layer: 'admin', focus: [113.3, 40.1] },
+  },
+  {
+    id: 'nanbei-03',
+    dynasty: 'nanbeichao',
+    question: '孝文帝改革做了什么？',
+    keywords: ['孝文帝', '汉化', '迁都洛阳', '改革'],
+    answer: '北魏太和十八年（494）孝文帝迁都洛阳，随后推行禁胡服、断北语、改汉姓、通婚姻等汉化措施。这是制度层面的变革，不改疆域边界，但重塑了北方的统治方式与族群结构。',
+    evidence: [
+      { source: '《魏书·高祖纪》', quote: '诏不得以北俗之语言于朝廷，若有违者，免所居官', confidence: 'high' },
+      { source: '《魏书·高祖纪》', quote: '太和十八年，迁都洛阳', confidence: 'medium' },
+    ],
+    caliber: '制度',
+    mapAction: { dynasty: 'nanbeichao', year: 494, layer: 'cultural', focus: [112.45, 34.62] },
+  },
+  // ===== 五代十国 =====
+  {
+    id: 'wudai-01',
+    dynasty: 'wudai',
+    question: '燕云十六州是怎么丢的？',
+    keywords: ['燕云十六州', '石敬瑭', '契丹', '938'],
+    answer: '后晋天福三年（938）石敬瑭为借契丹兵称帝，割幽、蓟、瀛、莫、涿、檀、顺、新、妫、儒、武、云、应、寰、朔、蔚十六州与契丹（辽）。此后再无中原政权稳定控制这一带，直到明初。',
+    evidence: [
+      { source: '《资治通鉴》卷二百八十', quote: '割幽、蓟、瀛、莫、涿、檀、顺、新、妫、儒、武、云、应、寰、朔、蔚十六州以与契丹', confidence: 'high' },
+      { source: '《旧五代史·晋书·高祖纪》', quote: '割雁门以北及幽州之地以赂契丹', confidence: 'medium' },
+    ],
+    caliber: '直辖（短期）',
+    mapAction: { dynasty: 'wudai', year: 938, layer: 'admin', focus: [116.4, 39.9] },
+  },
+  // ===== 辽宋夏金 =====
+  {
+    id: 'liaosong-01',
+    dynasty: 'liaosong',
+    question: '澶渊之盟约定了什么？',
+    keywords: ['澶渊之盟', '澶州', '岁币', '1005'],
+    answer: '景德元年（1005）宋辽于澶州（今河南濮阳）议和：约为兄弟之国，宋每年输辽银十万两、绢二十万匹，双方以白沟河为界。这是条约关系，不等于宋对辽地拥有管辖。',
+    evidence: [
+      { source: '《续资治通鉴长编》卷五十八', quote: '岁输银十万两、绢二十万匹', confidence: 'medium' },
+      { source: '《宋史·真宗本纪》', quote: '景德元年十二月，契丹请盟，许之', confidence: 'medium' },
+    ],
+    caliber: '条约',
+    mapAction: { dynasty: 'liaosong', year: 1005, layer: 'admin', focus: [115.0, 35.7] },
+  },
+  {
+    id: 'liaosong-02',
+    dynasty: 'liaosong',
+    question: '辽的疆域四至在哪？',
+    keywords: ['辽', '契丹', '四至', '胪朐河'],
+    answer: '据《辽史·地理志》，辽东至于海，西至金山（今阿尔泰山一带）并及流沙，北至胪朐河（今克鲁伦河），南至白沟（今河北白沟河），幅员万里。这是辽作为独立政权的疆域，不属宋。',
+    evidence: [
+      { source: '《辽史·地理志一》', quote: '东至于海，西至金山，暨于流沙，北至胪朐河，南至白沟，幅员万里', confidence: 'high' },
+      { source: '《辽史·地理志一》', quote: '太祖以遥辇氏之世，始大其国', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'liaosong', year: 1111, layer: 'admin', focus: [119.4, 43.9] },
+  },
+  {
+    id: 'liaosong-03',
+    dynasty: 'liaosong',
+    question: '西夏什么时候立国？',
+    keywords: ['西夏', '元昊', '兴庆府', '1038'],
+    answer: '宝元元年（1038）李元昊于兴庆府（今宁夏银川）称帝，国号大夏，史称西夏。西夏是与宋、辽并立的独立政权，本系统不将其划入宋疆。',
+    evidence: [
+      { source: '《宋史·夏国传》', quote: '元昊僭号，改元天授礼法延祚', confidence: 'medium' },
+      { source: '《宋史·夏国传》', quote: '其地东据河，西至玉门，南临萧关，北控大漠', confidence: 'medium' },
+    ],
+    caliber: '独立政权',
+    mapAction: { dynasty: 'liaosong', year: 1038, layer: 'admin', focus: [106.2, 38.5] },
+  },
+  {
+    id: 'liaosong-04',
+    dynasty: 'liaosong',
+    question: '宋夏庆历和议的内容？',
+    keywords: ['庆历和议', '宋夏', '岁赐', '1044'],
+    answer: '庆历四年（1044）宋夏议和：元昊向宋称臣，宋每年赐西夏银、绢、茶合计二十五万五千。这是以岁赐换和平的条约安排，宋并未取得西夏地的管辖。',
+    evidence: [
+      { source: '《宋史·夏国传》', quote: '岁赐银、绢、茶二十五万五千', confidence: 'medium' },
+      { source: '《续资治通鉴长编》卷一五七', quote: '元昊请臣，岁赐如约', confidence: 'medium' },
+    ],
+    caliber: '条约',
+    mapAction: { dynasty: 'liaosong', year: 1044, layer: 'admin', focus: [106.2, 38.5] },
+  },
+  {
+    id: 'liaosong-05',
+    dynasty: 'liaosong',
+    question: '北宋的北界在哪？',
+    keywords: ['北宋', '北界', '白沟', '宋辽'],
+    answer: '北宋与辽以白沟河（今河北白沟一带）为界，北界不含燕云十六州。燕云自 938 年入辽，宋初两次北伐未复，故北宋疆域在华北平原北缘明显内缩。',
+    evidence: [
+      { source: '《宋史·地理志》', quote: '北以白沟河与辽为界', confidence: 'medium' },
+      { source: '《续资治通鉴长编》卷五十八', quote: '两朝疆界，白沟为限', confidence: 'medium' },
+    ],
+    caliber: '直辖',
+    mapAction: { dynasty: 'liaosong', year: 1005, layer: 'admin', focus: [116.0, 39.3] },
+  },
+  // ===== 南宋 =====
+  {
+    id: 'nansong-01',
+    dynasty: 'nansong',
+    question: '绍兴和议划界在哪？',
+    keywords: ['绍兴和议', '淮水', '大散关', '1141'],
+    answer: '绍兴十一年（1141）宋金议和：东以淮水中流为界，西以大散关（今陕西宝鸡南）为界，宋割唐、邓二州，向金称臣纳贡。南宋疆域由此稳定在淮河—大散关以南。',
+    evidence: [
+      { source: '《宋史·高宗本纪》', quote: '与金和议成，以淮水中流、大散关为界', confidence: 'medium' },
+      { source: '《建炎以来系年要录》卷一四三', quote: '画疆之议，淮水中流为界', confidence: 'medium' },
+    ],
+    caliber: '条约',
+    mapAction: { dynasty: 'nansong', year: 1141, layer: 'admin', focus: [113.5, 32.6] },
+  },
+  {
+    id: 'nansong-02',
+    dynasty: 'nansong',
+    question: '郾城大捷是谁打的？',
+    keywords: ['郾城', '岳飞', '兀术', '1140'],
+    answer: '绍兴十年（1140）岳飞于郾城（今河南漯河）大破金兀术主力骑兵，是为郾城大捷。此为战役胜利，宋军随后奉命班师，未改变绍兴和议后的划界。',
+    evidence: [
+      { source: '《宋史·岳飞传》', quote: '飞败兀术于郾城', confidence: 'medium' },
+      { source: '《宋史·岳飞传》', quote: '飞遣子云领骑兵直贯其阵', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'nansong', year: 1140, layer: 'military', focus: [114.0, 33.6] },
+  },
+  {
+    id: 'nansong-03',
+    dynasty: 'nansong',
+    question: '采石之战为什么能胜？',
+    keywords: ['采石', '虞允文', '金主亮', '1161'],
+    answer: '绍兴三十一年（1161）金海陵王南侵，虞允文于采石矶（今安徽马鞍山）督舟师阻击，金军渡江失败，不久金主亮被弑。此役保住南宋江防，双方重回对峙线。',
+    evidence: [
+      { source: '《宋史·虞允文传》', quote: '允文督舟师拒之，金兵大败', confidence: 'medium' },
+      { source: '《宋史·高宗本纪》', quote: '绍兴三十一年，金人渝盟，分道入寇', confidence: 'medium' },
+    ],
+    caliber: '军事',
+    mapAction: { dynasty: 'nansong', year: 1161, layer: 'military', focus: [118.5, 31.7] },
+  },
+];
+
+const allEntries: KnowledgeEntry[] = [...tangEntries, ...mingEntries, ...expandedEntries, ...songEntries];
+
+/**
+ * 学生口语说法 → 条目关键词写法。只作用于关键词兜底检索，不改动条目数据；
+ * 语义路径直接用原问题向量化，不受此表影响。
+ */
+const QUERY_TO_KEYWORD: [RegExp, string][] = [
+  [/管到|直接管辖|设治|设州县/g, '直辖'],
+  [/羁縻府州|羁縻州/g, '羁縻'],
+];
+
+/** 朝代中文名/别称 → 代码，用于关键词路径的朝代加权（语义路径不依赖此表）。 */
+const DYNASTY_ALIASES: Record<string, string[]> = {
+  xia: ['夏朝'],
+  shang: ['商朝', '殷商'],
+  xizhou: ['西周'],
+  chunqiu: ['春秋'],
+  zhanguo: ['战国'],
+  qin: ['秦朝', '秦'],
+  xihan: ['西汉', '前汉'],
+  donghan: ['东汉', '后汉'],
+  sanguo: ['三国'],
+  xijin: ['西晋'],
+  dongjin: ['东晋'],
+  nanbeichao: ['南北朝', '南朝', '北朝', '北魏'],
+  sui: ['隋朝', '隋'],
+  tang: ['唐朝', '大唐', '李唐', '唐'],
+  wudai: ['五代十国', '五代'],
+  liaosong: ['辽宋夏金', '北宋', '辽朝', '金朝', '西夏'],
+  nansong: ['南宋'],
+  yuan: ['元朝', '蒙元', '元'],
+  ming: ['明朝', '大明', '朱明', '明'],
+  qing: ['清朝', '大清', '清'],
+  minguo: ['民国'],
+  prc: ['新中国'],
+};
+
+/** 关键词查询归一化：把口语说法替换为条目用词。 */
+export function normalizeQuery(question: string): string {
+  let q = question.toLowerCase().trim();
+  for (const [re, keyword] of QUERY_TO_KEYWORD) q = q.replace(re, keyword);
+  return q;
+}
+
+/**
+ * 条目内容指纹（FNV-1a 32 位）：覆盖检索与展示用到的全部字段。
+ * 数据一变指纹就变，向量缓存键与问答缓存键随之失效，无需手工清理 Redis。
+ */
+export function fingerprintEntries(entries: KnowledgeEntry[]): string {
+  const payload = entries
+    .map(entry =>
+      [
+        entry.id,
+        entry.dynasty,
+        entry.question,
+        entry.keywords.join('|'),
+        entry.answer,
+        entry.caliber,
+        entry.noConsensus ? '1' : '0',
+        entry.evidence.map(ev => `${ev.source}:${ev.quote}:${ev.confidence}`).join(';'),
+        entry.mapAction
+          ? `${entry.mapAction.dynasty}/${entry.mapAction.layer}/${entry.mapAction.year ?? ''}/${entry.mapAction.focus?.join(',') ?? ''}/${entry.mapAction.figure ?? ''}`
+          : '',
+      ].join('\u0001'),
+    )
+    .sort()
+    .join('\u0002');
+
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    hash ^= payload.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${entries.length}-${hash.toString(16).padStart(8, '0')}`;
+}
 
 /** 关键词打分、过滤与排序（带分数）。数据库加载与内置内存两条路径共用，保证行为一致。 */
 export function rankEntriesScored(entries: KnowledgeEntry[], question: string): RetrievalHit[] {
-  const q = question.toLowerCase().trim();
+  const q = normalizeQuery(question);
 
   const scored = entries.map(entry => {
     let score = 0;
@@ -694,13 +983,15 @@ export function rankEntriesScored(entries: KnowledgeEntry[], question: string): 
       if (q.includes(kw.toLowerCase())) score += 2;
     }
     if (entry.question.toLowerCase().includes(q)) score += 5;
-    if (q.includes(entry.dynasty)) score += 1;
+    const aliases = DYNASTY_ALIASES[entry.dynasty] ?? [];
+    if (aliases.some(name => q.includes(name.toLowerCase()))) score += 1;
     return { entry, score };
   });
 
   return scored
     .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score)
+    .map<RetrievalHit>(s => ({ entry: s.entry, score: s.score, kwScore: s.score, via: 'keyword' }));
 }
 
 /** 兼容旧签名：仅返回条目。需要分数时请使用 rankEntriesScored。 */

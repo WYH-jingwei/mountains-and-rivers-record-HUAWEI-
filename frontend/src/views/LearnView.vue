@@ -2,8 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { exportLecturePackage, type LecturePackage } from '../api/lecture'
 import { submitAnswer } from '../api/deviation'
+import { DYNASTIES } from '../constants/dynasties'
 
-const selectedDynasty = ref<'tang' | 'ming'>('tang')
+const selectedDynasty = ref<string>('tang')
 const lecturePackage = ref<LecturePackage | null>(null)
 const currentQuestionIndex = ref(0)
 const selectedOption = ref<string | null>(null)
@@ -18,6 +19,10 @@ const currentQuestion = computed(() => {
 })
 
 const totalQuestions = computed(() => lecturePackage.value?.questions.length ?? 0)
+
+const dynastyLabel = computed(
+  () => DYNASTIES.find(d => d.code === selectedDynasty.value)?.label ?? selectedDynasty.value,
+)
 
 const correctCount = computed(() => answers.value.filter(a => a.isCorrect).length)
 
@@ -93,19 +98,17 @@ onMounted(() => {
       <h2>学生端 · 历史地理课堂</h2>
       <div class="dynasty-selector">
         <button
-          :class="{ active: selectedDynasty === 'tang' }"
-          @click="selectedDynasty = 'tang'"
-        >唐</button>
-        <button
-          :class="{ active: selectedDynasty === 'ming' }"
-          @click="selectedDynasty = 'ming'"
-        >明</button>
+          v-for="d in DYNASTIES"
+          :key="d.code"
+          :class="{ active: selectedDynasty === d.code }"
+          @click="selectedDynasty = d.code"
+        >{{ d.label }}</button>
       </div>
     </div>
 
     <div v-if="phase === 'intro'" class="intro-phase">
       <div class="intro-card">
-        <h3>{{ selectedDynasty === 'tang' ? '唐朝' : '明朝' }} · 历史地理</h3>
+        <h3>{{ dynastyLabel }} · 历史地理</h3>
         <p>本节课包含 {{ totalQuestions }} 个问题，答完后你会看到自己的认知标签。</p>
         <p class="hint">每个问题都基于真实史料，答错不是随机——而是概念混淆。看看你会不会把"写到"当成"管到"。</p>
         <button class="start-btn" @click="startQuiz">开始答题</button>

@@ -106,7 +106,7 @@ export const pool = mysql.createPool({
 ## 3. Redis 配置
 
 ### 规格
-- 版本：Redis 6.0
+- 版本：**华为云 DCS for Redis**（客户端固定 RESP2，兼容 Redis 3.x/6.x 与 DCS）
 - 规格：redis.ha.xu1.large.1（主备）或 redis.single.xu1.medium.1 起步
 - 网络：与 ECS 同 VPC
 

@@ -21,6 +21,26 @@ export interface RelatedQuestion {
   question: string
 }
 
+/** 单条召回：命中条目 + 命中路径 + 分数，用于“检索依据”面板展示。 */
+export interface RetrievalHitTrace {
+  id: string
+  dynasty: string
+  question: string
+  via: 'semantic' | 'keyword' | 'hybrid'
+  score: number
+  semScore?: number
+  kwScore?: number
+}
+
+/** 检索与定级溯源：只做解释展示，不参与分级。 */
+export interface RetrievalTrace {
+  effectiveQuestion: string
+  rewritten: boolean
+  dynastyCodes: string[]
+  hits: RetrievalHitTrace[]
+  rationale: string
+}
+
 export interface GradedResponse {
   level: 1 | 2 | 3 | 4
   answer: string
@@ -28,6 +48,7 @@ export interface GradedResponse {
   uncertainty: string[]
   mapAction?: MapAction
   relatedQuestions?: RelatedQuestion[]
+  retrieval?: RetrievalTrace
 }
 
 export interface HistoryTurn {

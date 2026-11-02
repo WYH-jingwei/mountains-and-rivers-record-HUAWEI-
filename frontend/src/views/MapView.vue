@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { askQuestion, type GradedResponse, type RelatedQuestion } from '../api/qa'
+import { askQuestion, type GradedResponse, type RelatedQuestion, type RetrievalTrace } from '../api/qa'
 
 const question = ref('')
 const loading = ref(false)
@@ -17,6 +17,7 @@ interface ChatMsg {
   uncertainty?: string[]
   related?: RelatedQuestion[]
   mapAction?: GradedResponse['mapAction']
+  retrieval?: RetrievalTrace
   pending?: boolean
 }
 const messages = ref<ChatMsg[]>([])
@@ -81,6 +82,7 @@ async function doAsk(qText: string) {
         uncertainty: res.uncertainty,
         related: res.relatedQuestions,
         mapAction: res.mapAction,
+        retrieval: res.retrieval,
       }
     }
   } catch (e) {
@@ -313,6 +315,26 @@ onUnmounted(() => {
                   </button>
                 </div>
               </div>
+
+              <details v-if="m.retrieval" class="retrieval-section">
+                <summary>检索依据</summary>
+                <p class="retrieval-line">
+                  检索问题：{{ m.retrieval.effectiveQuestion }}
+                  <span v-if="m.retrieval.rewritten" class="retrieval-tag">经上下文改写</span>
+                </p>
+                <p class="retrieval-line">定级依据：{{ m.retrieval.rationale }}</p>
+                <div v-if="m.retrieval.hits.length > 0" class="hit-list">
+                  <div v-for="h in m.retrieval.hits" :key="h.id" class="hit-row">
+                    <span class="hit-id">{{ h.id }}</span>
+                    <span class="hit-q">{{ h.question }}</span>
+                    <span class="hit-meta">
+                      {{ h.via === 'hybrid' ? '语义+关键词' : h.via === 'semantic' ? '语义' : '关键词' }}
+                      <template v-if="h.semScore != null"> · 相似度 {{ h.semScore.toFixed(2) }}</template>
+                      <template v-else-if="h.kwScore != null"> · 关键词分 {{ h.kwScore }}</template>
+                    </span>
+                  </div>
+                </div>
+              </details>
             </template>
           </div>
         </div>
@@ -644,6 +666,69 @@ onUnmounted(() => {
   background: #f1e2bd;
   border-color: #a33a2a;
   color: #3d2512;
+}
+
+/* 检索依据：可折叠的溯源面板（问题改写、定级理由、命中条目与分数） */
+.retrieval-section {
+  margin-top: 0.6rem;
+  font-size: 12px;
+  color: #55432c;
+}
+.retrieval-section summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b4423;
+  letter-spacing: 2px;
+  border-left: 3px solid #8a6a44;
+  padding-left: 0.4rem;
+  list-style: none;
+}
+.retrieval-section summary::before {
+  content: "▸ ";
+  color: #8a6a44;
+}
+.retrieval-section[open] summary::before {
+  content: "▾ ";
+}
+.retrieval-line {
+  margin: 0.35rem 0 0;
+  line-height: 1.6;
+}
+.retrieval-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 4px;
+  font-size: 11px;
+  color: #7a3b1e;
+  background: rgba(163, 58, 42, 0.1);
+  border: 1px solid rgba(163, 58, 42, 0.35);
+  border-radius: 3px;
+}
+.hit-list {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.hit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.2rem 0.35rem;
+  background: #f8f0da;
+  border: 1px dashed #c9b283;
+  border-radius: 3px;
+}
+.hit-id {
+  color: #7a3b1e;
+  font-weight: bold;
+}
+.hit-q {
+  flex: 1;
+  min-width: 0;
+}
+.hit-meta {
+  color: #8a6a44;
 }
 
 /* 常驻卷轴宠物：可拖动、轻点展开、呼吸浮动 + 眨眼 */
